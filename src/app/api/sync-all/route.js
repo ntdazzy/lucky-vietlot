@@ -140,17 +140,20 @@ export async function GET(request) {
                             }
                         });
 
-                        // Cập nhật tiến độ mỗi trang
-                        let progMsg = progressText;
-                        if (targetDrawId > 0 && lastProcessedId > 0) {
-                            const currentKì = targetDrawId - lastProcessedId + 1;
-                            progMsg += ` ⏳ (${currentKì}/${targetDrawId} kì)`;
-                        } else {
-                            progMsg += ` ⏳ (Đang xử lý trang ${page}...)`;
+                        // Cập nhật tiến độ mỗi 3 trang cho đỡ bị Telegram chặn do update quá nhanh
+                        if (page % 3 === 0 || page === 1) {
+                            let progMsg = progressText;
+                            const timeStr = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+                            if (targetDrawId > 0 && lastProcessedId > 0) {
+                                const currentKì = targetDrawId - lastProcessedId + 1;
+                                progMsg += ` ⏳ (${currentKì}/${targetDrawId} kì) [${timeStr}]`;
+                            } else {
+                                progMsg += ` ⏳ (Đang xử lý trang ${page}...) [${timeStr}]`;
+                            }
+                            await editTelegramMessage(chatId, messageId, progMsg);
                         }
-                        await editTelegramMessage(chatId, messageId, progMsg);
                         
-                        await new Promise(r => setTimeout(r, 200));
+                        await new Promise(r => setTimeout(r, 400));
                     } catch (e) {
                         console.error(`Error page ${page}:`, e.message);
                         if (e.response && e.response.status === 404) break;
