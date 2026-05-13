@@ -217,13 +217,13 @@ function backtestStrategy(strategy, allDraws, testWindow, gameConfig) {
   };
 }
 
-export async function runFullBacktest(game, testWindow = 100) {
+export async function runFullBacktest(game, testWindow = 100, useAllDraws = false) {
   const gameConfig = getGame(game);
   if (!gameConfig || !gameConfig.ballCount) {
     return { error: 'Game không hỗ trợ backtest' };
   }
 
-  const allDraws = getLatestDraws(game, 5000)
+  const allDraws = getLatestDraws(game, useAllDraws ? 99999 : 500)
     .filter(d => d.balls)
     .sort((a, b) => parseInt(a.draw_id) - parseInt(b.draw_id));
 
@@ -250,14 +250,14 @@ export async function runFullBacktest(game, testWindow = 100) {
   };
 }
 
-export async function generateWithWinner(game, strategyId) {
+export async function generateWithWinner(game, strategyId, useAllDraws = false) {
   const gameConfig = getGame(game);
   if (!gameConfig || !gameConfig.ballCount) return null;
 
   const strategy = STRATEGIES.find(s => s.id === strategyId);
   if (!strategy) return null;
 
-  const allDraws = getLatestDraws(game, 5000)
+  const allDraws = getLatestDraws(game, useAllDraws ? 99999 : 500)
     .filter(d => d.balls)
     .sort((a, b) => parseInt(a.draw_id) - parseInt(b.draw_id));
 

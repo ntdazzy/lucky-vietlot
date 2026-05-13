@@ -12,20 +12,21 @@ export default function ScienceLabPage() {
   const [data, setData] = useState(null);
   const [generated, setGenerated] = useState(null);
   const [isPending, startTransition] = useTransition();
+  const [useAllDraws, setUseAllDraws] = useState(false);
   const gameNames = getGameNames();
 
   const runBacktest = () => {
     setData(null);
     setGenerated(null);
     startTransition(async () => {
-      const res = await runFullBacktest(game, testWindow);
+      const res = await runFullBacktest(game, testWindow, useAllDraws);
       setData(res);
     });
   };
 
   const generateFromWinner = async () => {
     if (!data?.winner) return;
-    const res = await generateWithWinner(game, data.winner.id);
+    const res = await generateWithWinner(game, data.winner.id, useAllDraws);
     setGenerated(res);
   };
 
@@ -73,6 +74,28 @@ export default function ScienceLabPage() {
                   {w} kỳ
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="lab-control-group">
+            <label className="lab-label">Nguồn dữ liệu huấn luyện</label>
+            <div className="data-source-toggle" style={{ margin: 0 }}>
+              <button 
+                onClick={() => setUseAllDraws(false)} 
+                className={`data-source-btn${!useAllDraws ? ' active' : ''}`}
+                disabled={isPending}
+                style={{ padding: '8px 16px' }}
+              >
+                <span>500 kỳ gần nhất</span>
+              </button>
+              <button 
+                onClick={() => setUseAllDraws(true)} 
+                className={`data-source-btn${useAllDraws ? ' active' : ''}`}
+                disabled={isPending}
+                style={{ padding: '8px 16px' }}
+              >
+                <span>Tất cả các kỳ</span>
+              </button>
             </div>
           </div>
 
