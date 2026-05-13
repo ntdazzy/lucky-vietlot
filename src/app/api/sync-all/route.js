@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isSyncCancelled, setSyncCancelled } from '@/lib/sync-status';
 const axios = require('axios');
 const cheerio = require('cheerio');
 const Database = require('better-sqlite3');
@@ -52,35 +53,22 @@ export async function GET(request) {
 
     // Chạy ngầm việc đồng bộ
     (async () => {
+        setSyncCancelled(false); // Reset flag
         const db = getDbWritable();
         try {
             let progressText = `⚡ <b>Bắt đầu đồng bộ hóa TOÀN BỘ dữ liệu...</b>\n`;
             await editTelegramMessage(chatId, messageId, progressText);
 
             const configs = [
-                { 
-                    name: 'Mega 6/45', 
-                    path: 'xsmega645',
-                    type: 'mega',
-                },
-                { 
-                    name: 'Power 6/55', 
-                    path: 'xspower',
-                    type: 'power',
-                },
-                { 
-                    name: 'Lotto 5/35', 
-                    path: 'xslotto-5-35',
-                    type: 'lotto535',
-                },
-                { 
-                    name: 'Max 3D Pro', 
-                    path: 'xsmax3dpro',
-                    type: 'max3d',
-                }
+                { name: 'Mega 6/45', path: 'xsmega645', type: 'mega' },
+                { name: 'Power 6/55', path: 'xspower', type: 'power' },
+                { name: 'Lotto 5/35', path: 'xslotto-5-35', type: 'lotto535' },
+                { name: 'Max 3D Pro', path: 'xsmax3dpro', type: 'max3d' }
             ];
 
             for (const cfg of configs) {
+                if (isSyncCancelled()) break;
+
                 progressText += `\n📦 <b>Đang đồng bộ ${cfg.name}...</b>`;
                 await editTelegramMessage(chatId, messageId, progressText);
 
@@ -94,6 +82,7 @@ export async function GET(request) {
                 let targetDrawId = 0;
 
                 for (let page = 1; page <= 500; page++) {
+                    if (isSyncCancelled()) break;
                     try {
                         const url = `https://xskt.com.vn/${cfg.path}/trang-${page}`;
                         const res = await axios.get(url, { headers: XSKT_HEADERS, timeout: 20000 });
@@ -166,7 +155,11 @@ export async function GET(request) {
                 await editTelegramMessage(chatId, messageId, progressText);
             }
 
-            progressText += `\n\n✅ <b>HOÀN TẤT ĐỒNG BỘ TOÀN BỘ!</b>`;
+            if (isSyncCancelled()) {
+                progressText += `\n\n🛑 <b>ĐÃ HỦY ĐỒNG BỘ THEO YÊU CẦU.</b>`;
+            } else {
+                progressText += `\n\n✅ <b>HOÀN TẤT ĐỒNG BỘ TOÀN BỘ!</b>`;
+            }
             await editTelegramMessage(chatId, messageId, progressText);
 
         } catch (e) {
