@@ -35,15 +35,19 @@ async function syncGame(gameCode, type = 'mega') {
     let tableName, stmt;
     if (type === 'mega') {
         tableName = 'draws_645';
+        db.prepare(`DELETE FROM draws_645`).run();
         stmt = db.prepare(`INSERT OR IGNORE INTO draws_645 (date, draw_id, balls) VALUES (?, ?, ?)`);
     } else if (type === 'power') {
         tableName = 'draws_655';
+        db.prepare(`DELETE FROM draws_655`).run();
         stmt = db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`);
     } else if (type === 'lotto535') {
         tableName = 'draws_535';
+        db.prepare(`DELETE FROM draws_535`).run();
         stmt = db.prepare(`INSERT OR IGNORE INTO draws_535 (id, date, draw_id, balls) VALUES (?, ?, ?, ?)`);
     } else {
         tableName = 'draws_max3dpro';
+        db.prepare(`DELETE FROM draws_max3dpro`).run();
         stmt = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
     }
 

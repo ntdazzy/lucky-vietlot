@@ -84,6 +84,12 @@ export async function GET(request) {
                 progressText += `\n📦 <b>Đang đồng bộ ${cfg.name}...</b>`;
                 await editTelegramMessage(chatId, messageId, progressText);
 
+                // Xoá data cũ trước khi sync all
+                const tableMap = { 'mega': 'draws_645', 'power': 'draws_655', 'lotto535': 'draws_535', 'max3d': 'draws_max3dpro' };
+                if (tableMap[cfg.type]) {
+                    db.prepare(`DELETE FROM ${tableMap[cfg.type]}`).run();
+                }
+
                 let insertedCount = 0;
                 let targetDrawId = 0;
 
