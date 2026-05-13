@@ -14,6 +14,25 @@ const GAMES = [
     { code: 'max-3dpro', name: 'Max 3D Pro', endpoint: 'winning-number-max-3dpro' }
 ];
 
+async function sendTelegramNotification(message) {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    
+    if (!token || !chatId) return;
+    
+    try {
+        const url = `https://api.telegram.org/bot${token}/sendMessage`;
+        await axios.post(url, {
+            chat_id: chatId,
+            text: message,
+            parse_mode: 'HTML'
+        });
+        console.log("- Đã gửi thông báo qua Telegram thành công.");
+    } catch (e) {
+        console.error("- Lỗi khi gửi Telegram:", e.message);
+    }
+}
+
 async function updateLatestDraw() {
     console.log(`[${new Date().toLocaleString()}] Bắt đầu cập nhật tự động (Cronjob)...`);
     
@@ -79,6 +98,7 @@ async function updateLatestDraw() {
                         insert.run(dateStr, drawId, balls.slice(0, 6).join(', '), balls[6] || '');
                     }
                     console.log(`- Đã lưu kỳ #${drawId} (${dateStr}) vào DB thành công.`);
+                    await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${drawId} ngày ${dateStr}\nBóng: ${balls.join(', ')}\n\n👉 Nhắn /on để truy cập Web xem chi tiết!`);
                 } else {
                     console.log(`- Không tìm thấy bóng cho kỳ #${drawId}. Lỗi Cloudflare?`);
                 }
@@ -98,6 +118,7 @@ async function updateLatestDraw() {
                     const insert = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
                     insert.run(dateStr, drawId, dacBiet, nhat, nhi, ba);
                     console.log(`- Đã lưu kỳ #${drawId} (${dateStr}) vào DB thành công.`);
+                    await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${drawId} ngày ${dateStr}\n\n👉 Nhắn /on để truy cập Web xem chi tiết!`);
                 }
             }
         } catch (e) {
