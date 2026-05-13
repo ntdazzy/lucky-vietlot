@@ -749,6 +749,169 @@ tbody tr:hover td {
   line-height: 1.6;
 }
 
+/* --------------------------------------------------------------------------
+   DASHBOARD: HOT/COLD PANELS
+   -------------------------------------------------------------------------- */
+
+.hot-cold-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.panel-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.panel-subtitle {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  flex-basis: 100%;
+}
+
+.section-spacing {
+  margin-bottom: 24px;
+}
+
+.number-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.number-row {
+  display: grid;
+  grid-template-columns: auto 36px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.number-rank {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  min-width: 24px;
+}
+
+.number-bar {
+  height: 8px;
+  background: var(--surface-strong);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.number-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.number-bar-fill.hot {
+  background: linear-gradient(90deg, #ff7b9c, var(--primary));
+  box-shadow: 0 0 8px rgba(255, 42, 95, 0.4);
+}
+
+.number-bar-fill.cold {
+  background: linear-gradient(90deg, #0891b2, #06b6d4);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+}
+
+.number-count {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  min-width: 50px;
+  text-align: right;
+}
+
+.ball-hot {
+  background: radial-gradient(circle at 30% 30%, #ff7b9c 0%, var(--primary) 60%, #e01b4c 100%);
+  color: white;
+  border-color: rgba(255,255,255,0.4);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  box-shadow: 2px 4px 12px rgba(255, 42, 95, 0.4), inset -2px -4px 6px rgba(0,0,0,0.2), inset 2px 2px 4px rgba(255,255,255,0.6);
+}
+
+.ball-cold {
+  background: radial-gradient(circle at 30% 30%, #cbd5e1 0%, #94a3b8 60%, #64748b 100%);
+  color: #1e293b;
+  opacity: 0.85;
+}
+
+[data-theme='dark'] .ball-cold {
+  background: radial-gradient(circle at 30% 30%, #475569 0%, #334155 60%, #1e293b 100%);
+  color: #cbd5e1;
+}
+
+/* --------------------------------------------------------------------------
+   DRAWS LIST (card-style on mobile)
+   -------------------------------------------------------------------------- */
+
+.draws-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.draw-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-strong);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.draw-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.draw-date {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.draw-id {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.draw-balls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.draw-prize {
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 1.1rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 32px;
+  color: var(--text-muted);
+}
+
 .algo-card__title {
   font-weight: 700;
   margin-bottom: 4px;
@@ -833,6 +996,105 @@ main, .container {
 /* Tab / pill style links */
 a[style*="borderRadius"], button[style*="borderRadius"] {
   transition: all 0.2s ease;
+}
+
+
+/* --------------------------------------------------------------------------
+   23. MAIN CONTENT & PWA INSTALL BANNER
+   -------------------------------------------------------------------------- */
+
+.main-content {
+  margin-top: 24px;
+  padding-bottom: 80px;
+}
+
+.pwa-install-banner {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 100;
+  background: var(--background);
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  animation: fadeInUp 0.4s ease-out;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+[data-theme='light'] .pwa-install-banner {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+.pwa-install-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  min-height: 32px;
+  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pwa-install-close:hover {
+  background: var(--surface-strong);
+  color: var(--text-main);
+}
+
+.pwa-install-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 24px;
+}
+
+.pwa-install-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+  box-shadow: var(--glow-primary);
+}
+
+.pwa-install-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.pwa-install-text strong {
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+.pwa-install-text span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.pwa-install-btn {
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 
@@ -1054,6 +1316,37 @@ a[style*="borderRadius"], button[style*="borderRadius"] {
   .btn-game {
     padding: 12px 24px;
     font-size: 0.9rem;
+  }
+
+  .main-content {
+    margin-top: 32px;
+    padding-bottom: 60px;
+  }
+
+  .hot-cold-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  .draw-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+  }
+
+  .draw-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 120px;
+  }
+
+  .pwa-install-banner {
+    bottom: 24px;
+    left: auto;
+    right: 24px;
+    max-width: 420px;
   }
 }
 

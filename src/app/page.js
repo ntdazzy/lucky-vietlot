@@ -1,6 +1,6 @@
 import { getStats, getLatestDraws } from '@/lib/db';
 import { getGameNames } from '@/lib/games';
-import { Trophy, TrendingUp, Activity, BarChart2 } from 'lucide-react';
+import { Flame, Snowflake, TrendingUp, BarChart2 } from 'lucide-react';
 import FreqChart from '@/components/Chart';
 
 export const dynamic = 'force-dynamic';
@@ -8,21 +8,18 @@ export const dynamic = 'force-dynamic';
 export default async function Home({ searchParams }) {
   const resolvedParams = await searchParams;
   const game = resolvedParams.game || '645';
-  
-  const stats = getStats(game);
-  const top10 = stats.slice(0, 10);
-  const bottom10 = [...stats].reverse().slice(0, 5);
-  const latestDraws = getLatestDraws(game, 5);
 
+  const stats = getStats(game);
+  const hot = stats.slice(0, 6);
+  const cold = [...stats].reverse().slice(0, 6);
+  const latestDraws = getLatestDraws(game, 5);
   const gameNames = getGameNames();
 
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title title-gradient">Vietlott Analytics Pro</h1>
-        <p className="page-subtitle">
-          Khám phá các con số may mắn hôm nay
-        </p>
+        <h1 className="page-title title-gradient">Vietlott Analytics</h1>
+        <p className="page-subtitle">Khám phá các con số may mắn hôm nay</p>
 
         <div className="game-picker">
           {['645', '655', '535', 'max3dpro'].map(g => (
@@ -32,38 +29,42 @@ export default async function Home({ searchParams }) {
       </div>
 
       {game !== 'max3dpro' && (
-        <div className="stat-grid" style={{ marginBottom: '40px' }}>
-          <div className="stat-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Trophy color="var(--primary)" size={28} />
-              <h2 className="stat-card__label">Con số đang hot</h2>
+        <div className="hot-cold-grid">
+          <div className="glass-panel hot-panel">
+            <div className="panel-header">
+              <Flame size={20} color="#ff2a5f" />
+              <h2 className="panel-title">Số hay ra</h2>
+              <span className="panel-subtitle">Top 6 xuất hiện nhiều nhất</span>
             </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>Xuất hiện nhiều nhất gần đây</p>
-            <div className="ball-group">
-              {top10.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div className="ball" style={idx < 3 ? { background: 'linear-gradient(135deg, var(--primary), #ff7b9c)', color: 'var(--text-main)', border: 'none', boxShadow: 'var(--glow-primary)' } : {}}>
-                    {item.number}
+            <div className="number-list">
+              {hot.map((item, idx) => (
+                <div key={item.number} className="number-row">
+                  <span className="number-rank">#{idx + 1}</span>
+                  <span className={`ball ${idx < 3 ? 'ball-hot' : ''}`}>{item.number}</span>
+                  <div className="number-bar">
+                    <div className="number-bar-fill hot" style={{ width: `${Math.min(100, (item.count / (hot[0]?.count || 1)) * 100)}%` }} />
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>{item.count} lần</span>
+                  <span className="number-count">{item.count}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="stat-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Activity color="var(--secondary)" size={28} />
-              <h2 className="stat-card__label">Con số 'ngủ đông'</h2>
+          <div className="glass-panel cold-panel">
+            <div className="panel-header">
+              <Snowflake size={20} color="#06b6d4" />
+              <h2 className="panel-title">Số lâu chưa ra</h2>
+              <span className="panel-subtitle">Top 6 ít xuất hiện gần đây</span>
             </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>Lâu lắm rồi chưa thấy tăm hơi</p>
-            <div className="ball-group">
-              {bottom10.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div className="ball" style={{ opacity: 0.7, background: '#1e293b', color: '#94a3b8', borderColor: '#334155' }}>
-                    {item.number}
+            <div className="number-list">
+              {cold.map((item, idx) => (
+                <div key={item.number} className="number-row">
+                  <span className="number-rank">#{idx + 1}</span>
+                  <span className="ball ball-cold">{item.number}</span>
+                  <div className="number-bar">
+                    <div className="number-bar-fill cold" style={{ width: `${Math.min(100, (item.gap / 50) * 100)}%` }} />
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>{item.count} lần</span>
+                  <span className="number-count">{item.gap} kỳ</span>
                 </div>
               ))}
             </div>
@@ -72,74 +73,53 @@ export default async function Home({ searchParams }) {
       )}
 
       {game !== 'max3dpro' && stats.length > 0 && (
-        <div className="glass-panel" style={{ marginBottom: '40px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <BarChart2 color="var(--primary)" size={28} />
-            <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Biểu đồ tần suất</h2>
+        <div className="glass-panel section-spacing">
+          <div className="panel-header">
+            <BarChart2 size={20} color="var(--primary)" />
+            <h2 className="panel-title">Biểu đồ tần suất</h2>
+            <span className="panel-subtitle">Số lần xuất hiện của từng con số</span>
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '8px' }}>Xem toàn bộ các con số đã ra bao nhiêu lần</p>
           <FreqChart data={stats} />
         </div>
       )}
 
-      <div className="glass-panel table-responsive">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-          <TrendingUp color="#10b981" size={28} />
-          <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Kết Quả Mới Nhất</h2>
+      <div className="glass-panel section-spacing">
+        <div className="panel-header">
+          <TrendingUp size={20} color="#10b981" />
+          <h2 className="panel-title">Kết quả mới nhất</h2>
+          <span className="panel-subtitle">{latestDraws.length} kỳ quay gần đây</span>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Ngày Quay</th>
-              <th>Kỳ Quay</th>
-              {game !== 'max3dpro' ? <th>Kết Quả (Bộ Số)</th> : <th>Đặc Biệt</th>}
-              {game === '655' && <th>Đặc Biệt</th>}
-              {game === 'max3dpro' && <th>Giải Nhất</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {latestDraws.map(draw => {
-              let balls = [];
-              if (game !== 'max3dpro' && draw.balls) balls = draw.balls.split(',');
-              
-              return (
-                <tr key={draw.id}>
-                  <td style={{ fontWeight: 600 }}>{draw.date}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>#{draw.draw_id}</td>
-                  
-                  {game !== 'max3dpro' ? (
-                    <td>
-                      {balls.map((b, i) => (
-                        <span key={i} className="ball" style={{ width: '36px', height: '36px', fontSize: '0.9rem' }}>
-                          {b.trim()}
-                        </span>
-                      ))}
-                    </td>
-                  ) : (
-                    <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{draw.dac_biet}</td>
-                  )}
-                  
-                  {game === '655' && (
-                    <td>
-                      <span className="ball special" style={{ width: '36px', height: '36px', fontSize: '0.9rem' }}>
-                        {draw.special_ball}
-                      </span>
-                    </td>
-                  )}
-                  
-                  {game === 'max3dpro' && (
-                    <td>{draw.nhat}</td>
-                  )}
-                </tr>
-              )
-            })}
-            {latestDraws.length === 0 && (
-              <tr>
-                <td colSpan="3" style={{ textAlign: 'center', padding: '40px' }}>Chưa có dữ liệu</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="draws-list">
+          {latestDraws.map(draw => {
+            let balls = [];
+            if (game !== 'max3dpro' && draw.balls) balls = draw.balls.split(',');
+            return (
+              <div key={draw.id} className="draw-row">
+                <div className="draw-meta">
+                  <span className="draw-date">{draw.date}</span>
+                  <span className="draw-id">Kỳ #{draw.draw_id}</span>
+                </div>
+                {game !== 'max3dpro' ? (
+                  <div className="draw-balls">
+                    {balls.map((b, i) => (
+                      <span key={i} className="ball">{b.trim()}</span>
+                    ))}
+                    {game === '655' && draw.special_ball && (
+                      <span className="ball special">{draw.special_ball}</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="draw-balls">
+                    <span className="draw-prize">{draw.dac_biet}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {latestDraws.length === 0 && (
+            <div className="empty-state">Chưa có dữ liệu cho {gameNames[game]}</div>
+          )}
+        </div>
       </div>
     </div>
   );

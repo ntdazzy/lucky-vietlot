@@ -2,21 +2,31 @@ import './globals.css';
 import { Inter } from 'next/font/google';
 import ThemeWrapper from '@/components/ThemeWrapper';
 import Navbar from '@/components/Navbar';
+import PWAProvider from '@/components/PWAProvider';
 
 const inter = Inter({ subsets: ['latin', 'vietnamese'], display: 'swap' });
 
 export const metadata = {
   title: 'Vietlott Analytics Pro',
-  description: 'Nền tảng phân tích và dự đoán Vietlott hiện đại',
-  manifest: '/manifest.json',
+  description: 'Phân tích, tra cứu và gợi ý số Vietlott thông minh — dùng như app trên điện thoại',
+  applicationName: 'Vietlott Pro',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
-    title: 'Vietlott Pro'
-  }
+    statusBarStyle: 'black-translucent',
+    title: 'Vietlott Pro',
+  },
+  formatDetection: { telephone: false },
+  icons: {
+    icon: '/icon-192x192.png',
+    apple: '/icon-192x192.png',
+  },
 };
 
 export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
     { media: '(prefers-color-scheme: dark)', color: '#0b0f19' },
@@ -26,15 +36,13 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="vi" className={inter.className} suppressHydrationWarning>
-      <head>
-        <link rel="apple-touch-icon" href="/icon-192x192.png" />
-      </head>
       <body>
         <ThemeWrapper>
           <Navbar />
-          <main className="container" style={{ marginTop: '40px', paddingBottom: '60px' }}>
+          <main className="container main-content">
             {children}
           </main>
+          <PWAProvider />
         </ThemeWrapper>
       </body>
     </html>
