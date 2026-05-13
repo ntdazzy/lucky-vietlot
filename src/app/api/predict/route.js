@@ -7,7 +7,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const game = searchParams.get('game');
 
-    if (!game || (game !== '645' && game !== '655')) {
+    if (!game || !['645', '655', '535'].includes(game)) {
         return NextResponse.json({ success: false, error: 'Invalid game parameter' }, { status: 400 });
     }
 

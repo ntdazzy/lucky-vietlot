@@ -750,6 +750,228 @@ tbody tr:hover td {
 }
 
 /* --------------------------------------------------------------------------
+   SCIENCE LAB (khoa-hoc)
+   -------------------------------------------------------------------------- */
+
+.lab-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.lab-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lab-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.lab-run-btn {
+  width: 100%;
+  padding: 14px;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.lab-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(168, 85, 247, 0.08);
+  border-left: 3px solid #a855f7;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.winner-panel {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.08), rgba(255, 42, 95, 0.05));
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.winner-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.winner-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.winner-name {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 4px 0 0 0;
+}
+
+.winner-desc {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.winner-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.winner-stat {
+  background: var(--surface-strong);
+  padding: 12px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.winner-stat-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.winner-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+.lab-generate-btn {
+  width: 100%;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.winner-generated {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--surface-border);
+  text-align: center;
+}
+
+.winner-generated-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+
+.strategy-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.strategy-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+
+.strategy-row-winner {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.12), rgba(168, 85, 247, 0.08));
+  border-left: 3px solid #eab308;
+}
+
+.strategy-rank {
+  font-weight: 800;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  min-width: 28px;
+}
+
+.strategy-row-winner .strategy-rank {
+  color: #eab308;
+}
+
+.strategy-info {
+  flex: 1;
+  min-width: 150px;
+}
+
+.strategy-name {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.strategy-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.strategy-metrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.strategy-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+
+.strategy-metric-value {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.strategy-metric-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.science-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.science-note-title {
+  color: var(--text-main);
+  margin-bottom: 12px;
+}
+
+.science-note p {
+  margin-bottom: 8px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* --------------------------------------------------------------------------
    DASHBOARD: HOT/COLD PANELS
    -------------------------------------------------------------------------- */
 
@@ -1326,6 +1548,29 @@ a[style*="borderRadius"], button[style*="borderRadius"] {
   .hot-cold-grid {
     grid-template-columns: 1fr 1fr;
     gap: 24px;
+  }
+
+  .lab-controls {
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 20px;
+  }
+
+  .lab-control-group {
+    flex: 1;
+  }
+
+  .lab-run-btn {
+    width: auto;
+    padding: 14px 28px;
+  }
+
+  .winner-stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .strategy-row {
+    flex-wrap: nowrap;
   }
 
   .draw-row {
