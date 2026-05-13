@@ -1,13 +1,17 @@
 'use server';
 import { getLatestDraws, getStats } from '@/lib/db';
+import { getGame } from '@/lib/games';
 
 export async function analyzePatterns(game) {
+  const gameConfig = getGame(game);
+  if (!gameConfig || !gameConfig.ballCount) return null;
+
   const allDraws = getLatestDraws(game, 5000);
   if (allDraws.length === 0) return null;
 
-  const maxBall = game === '645' ? 45 : 55;
+  const maxBall = gameConfig.maxBall;
   const totalDraws = allDraws.length;
-  const ballsPerDraw = 6;
+  const ballsPerDraw = gameConfig.ballCount;
   const expectedPairFreq = totalDraws * (ballsPerDraw * (ballsPerDraw - 1) / 2) / (maxBall * (maxBall - 1) / 2);
 
   const pairCounts = {};

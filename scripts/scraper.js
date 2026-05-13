@@ -12,6 +12,7 @@ const db = new Database(dbPath);
 const GAMES = [
     { code: '645', name: 'Mega 6/45', endpoint: 'winning-number-645', concurrency: 5, table: 'draws_645' },
     { code: '655', name: 'Power 6/55', endpoint: 'winning-number-655', concurrency: 5, table: 'draws_655' },
+    { code: '535', name: 'Lotto 5/35', endpoint: 'winning-number-lotto-5-35', concurrency: 5, table: 'draws_535' },
     { code: 'max-3dpro', name: 'Max 3D Pro', endpoint: 'winning-number-max-3dpro', concurrency: 5, table: 'draws_max3dpro' }
 ];
 
@@ -29,6 +30,12 @@ function setupTables() {
             draw_id TEXT,
             balls TEXT,
             special_ball TEXT
+        );
+        CREATE TABLE IF NOT EXISTS draws_535 (
+            id TEXT PRIMARY KEY,
+            date TEXT,
+            draw_id TEXT,
+            balls TEXT
         );
         CREATE TABLE IF NOT EXISTS draws_max3dpro (
             id TEXT PRIMARY KEY,
@@ -105,7 +112,7 @@ async function fetchDrawDetail(game, draw) {
         
         let result = { id: draw.uuid, date: draw.date, draw_id: draw.id };
 
-        if (game.code === '645' || game.code === '655') {
+        if (game.code === '645' || game.code === '655' || game.code === '535') {
             const balls = [];
             $('.day_so_ket_qua_v2 span').each((i, el) => {
                 balls.push($(el).text().trim());
@@ -120,9 +127,11 @@ async function fetchDrawDetail(game, draw) {
             }
             if (game.code === '645') {
                 result.balls = balls.join(', ');
-            } else {
+            } else if (game.code === '655') {
                 result.balls = balls.slice(0, 6).join(', ');
                 result.special_ball = balls[6] || '';
+            } else if (game.code === '535') {
+                result.balls = balls.slice(0, 5).join(', ');
             }
         } else if (game.code === 'max-3dpro') {
             const rows = $('table tbody tr');
@@ -173,6 +182,8 @@ async function scrapeGame(game) {
         insertStmt = db.prepare(`INSERT OR REPLACE INTO draws_645 (id, date, draw_id, balls) VALUES (?, ?, ?, ?)`);
     } else if (game.code === '655') {
         insertStmt = db.prepare(`INSERT OR REPLACE INTO draws_655 (id, date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?, ?)`);
+    } else if (game.code === '535') {
+        insertStmt = db.prepare(`INSERT OR REPLACE INTO draws_535 (id, date, draw_id, balls) VALUES (?, ?, ?, ?)`);
     } else {
         insertStmt = db.prepare(`INSERT OR REPLACE INTO draws_max3dpro (id, date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?, ?)`);
     }
@@ -210,6 +221,8 @@ async function scrapeGame(game) {
                     insertStmt.run(r.id, r.date, r.draw_id, r.balls);
                 } else if (game.code === '655' && r.balls) {
                     insertStmt.run(r.id, r.date, r.draw_id, r.balls, r.special_ball);
+                } else if (game.code === '535' && r.balls) {
+                    insertStmt.run(r.id, r.date, r.draw_id, r.balls);
                 } else if (game.code === 'max-3dpro' && r.dac_biet) {
                     insertStmt.run(r.id, r.date, r.draw_id, r.dac_biet, r.nhat, r.nhi, r.ba);
                 }

@@ -19,9 +19,10 @@ export default function PWAProvider() {
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     setIsIOS(iOS);
 
-    if ('serviceWorker' in navigator) {
+    const isProd = process.env.NODE_ENV === 'production';
+    if ('serviceWorker' in navigator && isProd) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
           .then((reg) => {
             reg.addEventListener('updatefound', () => {
               const sw = reg.installing;
@@ -35,6 +36,8 @@ export default function PWAProvider() {
           })
           .catch(() => {});
       });
+    } else if ('serviceWorker' in navigator && !isProd) {
+      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
     }
 
     const handler = (e) => {
