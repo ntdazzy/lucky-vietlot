@@ -34,98 +34,98 @@ async function sendTelegramNotification(message) {
 }
 
 async function updateLatestDraw() {
-    console.log(`[${new Date().toLocaleString()}] Bắt đầu cập nhật tự động (Cronjob)...`);
+    console.log(`[${new Date().toLocaleString()}] Bắt đầu cập nhật tự động...`);
     
-    for (const game of GAMES) {
-        console.log(`Checking latest draw for ${game.name}...`);
-        try {
-            const url = `https://www.vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/${game.endpoint}`;
-            const res = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            const $ = cheerio.load(res.data);
-            
-            // Lấy draw đầu tiên có value (bỏ qua option "Chọn kỳ quay")
-            let validOption = null;
-            $('#drpSelectGameDraw option').each((i, el) => {
-                if ($(el).attr('value') && !validOption) {
-                    validOption = $(el);
+    try {
+        const url = `https://xskt.com.vn/vietlott/mega-6-45`;
+        const headers = { 
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
+        };
+        const res = await axios.get(url, { headers, timeout: 15000 });
+        const $ = cheerio.load(res.data);
+
+        const gamesToParse = [
+            {
+                code: '645', name: 'Mega 6/45',
+                parse: () => {
+                    const table = $('table:has(a[href*="xsmega645/ngay"])').first();
+                    if (!table.length) return null;
+                    const drawId = table.find('a[href*="xsmega645/ngay"] b').text().replace('#', '').trim();
+                    const dateStr = table.find('a[href*="xsmega645/ngay"]').attr('href').match(/ngay-(.+)/)[1].replace(/-/g, '/');
+                    const balls = table.find('.megaresult em').text().trim().split(/\s+/).join(', ');
+                    return { drawId, dateStr, balls };
                 }
-            });
-            
-            if (!validOption) continue;
-            
-            const val = validOption.attr('value');
-            const text = validOption.text();
-            
-            if (!val || !text) continue;
-            
-            const match = text.match(/(\d{2}\/\d{2}\/\d{4})\s*\((.+?)\)/);
-            if (!match) continue;
-            
-            const dateStr = match[1];
-            const drawId = match[2];
-            
-            // Check if exist in DB
-            const tableName = game.code === 'max-3dpro' ? 'draws_max3dpro' : `draws_${game.code}`;
-            const checkStmt = db.prepare(`SELECT 1 FROM ${tableName} WHERE draw_id = ?`);
-            const exists = checkStmt.get(drawId);
-            
-            if (exists) {
-                console.log(`- ${game.name} kỳ #${drawId} đã có trong DB. Bỏ qua.`);
-                continue;
+            },
+            {
+                code: '655', name: 'Power 6/55',
+                parse: () => {
+                    const table = $('table:has(a[href*="xspower/ngay"])').first();
+                    if (!table.length) return null;
+                    const drawId = table.find('a[href*="xspower/ngay"] b').text().replace('#', '').trim();
+                    const dateStr = table.find('a[href*="xspower/ngay"]').attr('href').match(/ngay-(.+)/)[1].replace(/-/g, '/');
+                    const balls = table.find('.megaresult').eq(0).find('em').text().trim().split(/\s+/).join(', ');
+                    const special_ball = table.find('.jp2 .megaresult').text().trim();
+                    return { drawId, dateStr, balls, special_ball };
+                }
+            },
+            {
+                code: 'max-3dpro', name: 'Max 3D Pro',
+                parse: () => {
+                    const table = $('table:has(a[href*="xsmax3dpro/ngay"])').first();
+                    if (!table.length) return null;
+                    const drawId = table.find('a[href*="xsmax3dpro/ngay"] b').text().replace('#', '').trim();
+                    const dateStr = table.find('a[href*="xsmax3dpro/ngay"]').attr('href').match(/ngay-(.+)/)[1].replace(/-/g, '/');
+                    const extractMax = (trIndex) => table.find('tr').eq(trIndex).find('b').map((i, el) => $(el).text().trim().replace(/\s+/, ', ')).get().join(', ');
+                    return { 
+                        drawId, dateStr, 
+                        dac_biet: extractMax(1), nhat: extractMax(3), nhi: extractMax(4), ba: extractMax(5) 
+                    };
+                }
             }
-            
-            console.log(`- Phát hiện kỳ mới #${drawId} cho ${game.name}. Đang tải dữ liệu...`);
-            
-            // Fetch chi tiết
-            const detailUrl = `https://www.vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/${game.code}?id=${drawId}&nocatche=1`;
-            const detailRes = await axios.get(detailUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            const $d = cheerio.load(detailRes.data);
-            
-            if (game.code === '645' || game.code === '655') {
-                const balls = [];
-                $d('.day_so_ket_qua_v2 span').each((i, el) => balls.push($d(el).text().trim()));
-                
-                if (balls.length === 0) {
-                    $d('.day_so_ket_qua span').each((i, el) => balls.push($d(el).text().trim()));
+        ];
+
+        for (const game of gamesToParse) {
+            console.log(`Checking latest draw for ${game.name}...`);
+            try {
+                const data = game.parse();
+                if (!data || !data.drawId) {
+                    console.log(`- Không tìm thấy dữ liệu cho ${game.name}`);
+                    continue;
                 }
-                
-                if (balls.length > 0) {
+
+                const tableName = game.code === 'max-3dpro' ? 'draws_max3dpro' : `draws_${game.code}`;
+                const checkStmt = db.prepare(`SELECT 1 FROM ${tableName} WHERE draw_id = ?`);
+                const exists = checkStmt.get(data.drawId);
+
+                if (exists) {
+                    console.log(`- ${game.name} kỳ #${data.drawId} đã có trong DB. Bỏ qua.`);
+                } else {
+                    console.log(`- Phát hiện kỳ mới #${data.drawId} cho ${game.name}. Đang lưu...`);
                     if (game.code === '645') {
                         const insert = db.prepare(`INSERT OR IGNORE INTO draws_645 (date, draw_id, balls) VALUES (?, ?, ?)`);
-                        insert.run(dateStr, drawId, balls.join(', '));
-                    } else {
+                        insert.run(data.dateStr, data.drawId, data.balls);
+                        await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}\nBóng: ${data.balls}`);
+                    } else if (game.code === '655') {
                         const insert = db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`);
-                        insert.run(dateStr, drawId, balls.slice(0, 6).join(', '), balls[6] || '');
+                        insert.run(data.dateStr, data.drawId, data.balls, data.special_ball);
+                        await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}\nBóng: ${data.balls}`);
+                    } else if (game.code === 'max-3dpro') {
+                        const insert = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
+                        insert.run(data.dateStr, data.drawId, data.dac_biet, data.nhat, data.nhi, data.ba);
+                        await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}`);
                     }
-                    console.log(`- Đã lưu kỳ #${drawId} (${dateStr}) vào DB thành công.`);
-                    await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${drawId} ngày ${dateStr}\nBóng: ${balls.join(', ')}\n\n👉 Nhắn /on để truy cập Web xem chi tiết!`);
-                } else {
-                    console.log(`- Không tìm thấy bóng cho kỳ #${drawId}. Lỗi Cloudflare?`);
+                    console.log(`- Đã lưu kỳ #${data.drawId} (${data.dateStr}) thành công.`);
                 }
-            } else if (game.code === 'max-3dpro') {
-                const rows = $d('table tbody tr');
-                const extractNumbers = (rowIndex) => {
-                    const nums = [];
-                    $d(rows[rowIndex]).find('span.red').each((i, el) => nums.push($d(el).text().trim()));
-                    return nums.join(', ');
-                };
-                const dacBiet = extractNumbers(0);
-                const nhat = extractNumbers(2);
-                const nhi = extractNumbers(3);
-                const ba = extractNumbers(4);
-                
-                if (dacBiet) {
-                    const insert = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
-                    insert.run(dateStr, drawId, dacBiet, nhat, nhi, ba);
-                    console.log(`- Đã lưu kỳ #${drawId} (${dateStr}) vào DB thành công.`);
-                    await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${drawId} ngày ${dateStr}\n\n👉 Nhắn /on để truy cập Web xem chi tiết!`);
-                }
+            } catch (e) {
+                console.error(`Error processing ${game.name}:`, e.message);
             }
-        } catch (e) {
-            console.error(`Error updating ${game.name}:`, e.message);
         }
+    } catch (e) {
+        console.error("Lỗi khi tải trang XSKT:", e.message);
     }
-    console.log(`Hoàn tất Cronjob!\n`);
+    console.log(`Hoàn tất!\n`);
 }
 
 updateLatestDraw();

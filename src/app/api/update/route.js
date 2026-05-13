@@ -50,114 +50,109 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Missing chat_id or message_id' }, { status: 400 });
     }
 
-    try {
-        const db = getDbWritable();
-        let progressText = `🔄 <b>Đang khởi động bộ cào dữ liệu... [0%]</b>\n`;
-        await editTelegramMessage(chatId, messageId, progressText);
-
-        let totalGames = GAMES.length;
-        let completed = 0;
-
-        for (const game of GAMES) {
-            progressText += `\nĐang quét ${game.name}...`;
+        try {
+            const db = getDbWritable();
+            let progressText = `🔄 <b>Đang khởi động bộ cào dữ liệu... [0%]</b>\n`;
             await editTelegramMessage(chatId, messageId, progressText);
 
-            try {
-                const headers = { 
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
-                };
-                const url = `https://www.vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/${game.endpoint}`;
-                const res = await axios.get(url, { headers, timeout: 15000 });
-                const $ = cheerio.load(res.data);
-                
-                let validOption = null;
-                $('#drpSelectGameDraw option').each((i, el) => {
-                    if ($(el).attr('value') && !validOption) {
-                        validOption = $(el);
+            const headers = { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
+            };
+
+            // xskt.com.vn có tất cả kết quả trên cùng 1 trang
+            progressText += `\nĐang tải dữ liệu từ XSKT...`;
+            await editTelegramMessage(chatId, messageId, progressText);
+
+            const url = `https://xskt.com.vn/vietlott/mega-6-45`;
+            const res = await axios.get(url, { headers, timeout: 15000 });
+            const $ = cheerio.load(res.data);
+
+            const gamesToParse = [
+                {
+                    code: '645', name: 'Mega 6/45',
+                    parse: () => {
+                        const table = $('table:has(a[href*="xsmega645/ngay"])').first();
+                        if (!table.length) return null;
+                        const drawId = table.find('a[href*="xsmega645/ngay"] b').text().replace('#', '').trim();
+                        const dateStr = table.find('a[href*="xsmega645/ngay"]').attr('href').match(/ngay-(.+)/)[1].replace(/-/g, '/');
+                        const balls = table.find('.megaresult em').text().trim().split(/\s+/).join(', ');
+                        return { drawId, dateStr, balls };
                     }
-                });
-                
-                if (validOption) {
-                    const text = validOption.text();
-                    const match = text.match(/(\d{2}\/\d{2}\/\d{4})\s*\((.+?)\)/);
-                    if (match) {
-                        const dateStr = match[1];
-                        const drawId = match[2];
-                        
+                },
+                {
+                    code: '655', name: 'Power 6/55',
+                    parse: () => {
+                        const table = $('table:has(a[href*="xspower/ngay"])').first();
+                        if (!table.length) return null;
+                        const drawId = table.find('a[href*="xspower/ngay"] b').text().replace('#', '').trim();
+                        const dateStr = table.find('a[href*="xspower/ngay"]').attr('href').match(/ngay-(.+)/)[1].replace(/-/g, '/');
+                        const balls = table.find('.megaresult').eq(0).find('em').text().trim().split(/\s+/).join(', ');
+                        const special_ball = table.find('.jp2 .megaresult').text().trim();
+                        return { drawId, dateStr, balls, special_ball };
+                    }
+                },
+                {
+                    code: 'max-3dpro', name: 'Max 3D Pro',
+                    parse: () => {
+                        const table = $('table:has(a[href*="xsmax3dpro/ngay"])').first();
+                        if (!table.length) return null;
+                        const drawId = table.find('a[href*="xsmax3dpro/ngay"] b').text().replace('#', '').trim();
+                        const dateStr = table.find('a[href*="xsmax3dpro/ngay"]').attr('href').match(/ngay-(.+)/)[1].replace(/-/g, '/');
+                        const extractMax = (trIndex) => table.find('tr').eq(trIndex).find('b').map((i, el) => $(el).text().trim().replace(/\s+/, ', ')).get().join(', ');
+                        return { 
+                            drawId, dateStr, 
+                            dac_biet: extractMax(1), nhat: extractMax(3), nhi: extractMax(4), ba: extractMax(5) 
+                        };
+                    }
+                }
+            ];
+
+            let completed = 0;
+            const totalGames = gamesToParse.length;
+
+            for (const game of gamesToParse) {
+                progressText += `\nĐang quét ${game.name}...`;
+                await editTelegramMessage(chatId, messageId, progressText);
+
+                try {
+                    const data = game.parse();
+                    if (!data || !data.drawId) {
+                        progressText += ` Không có KQ`;
+                    } else {
                         const tableName = game.code === 'max-3dpro' ? 'draws_max3dpro' : `draws_${game.code}`;
                         const checkStmt = db.prepare(`SELECT 1 FROM ${tableName} WHERE draw_id = ?`);
-                        const exists = checkStmt.get(drawId);
-                        
-                        if (exists) {
-                            progressText += ` Bỏ qua (Đã có sẵn #${drawId})`;
-                        } else {
-                            // Fetch chi tiết
-                            const detailUrl = `https://www.vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/${game.code}?id=${drawId}&nocatche=1`;
-                            const detailRes = await axios.get(detailUrl, { headers, timeout: 15000 });
-                            const $d = cheerio.load(detailRes.data);
-                            
-                            let found = false;
-                            if (game.code === '645' || game.code === '655') {
-                                const balls = [];
-                                $d('.day_so_ket_qua_v2 span').each((i, el) => balls.push($d(el).text().trim()));
-                                if (balls.length === 0) {
-                                    $d('.day_so_ket_qua span').each((i, el) => balls.push($d(el).text().trim()));
-                                }
-                                
-                                if (balls.length > 0) {
-                                    if (game.code === '645') {
-                                        const insert = db.prepare(`INSERT OR IGNORE INTO draws_645 (date, draw_id, balls) VALUES (?, ?, ?)`);
-                                        insert.run(dateStr, drawId, balls.join(', '));
-                                    } else {
-                                        const insert = db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`);
-                                        insert.run(dateStr, drawId, balls.slice(0, 6).join(', '), balls[6] || '');
-                                    }
-                                    found = true;
-                                    await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${drawId} ngày ${dateStr}\nBóng: ${balls.join(', ')}\n\n👉 Nhắn /on để truy cập Web xem chi tiết!`);
-                                }
-                            } else if (game.code === 'max-3dpro') {
-                                const rows = $d('table tbody tr');
-                                const extractNumbers = (rowIndex) => {
-                                    const nums = [];
-                                    $d(rows[rowIndex]).find('span.red').each((i, el) => nums.push($d(el).text().trim()));
-                                    return nums.join(', ');
-                                };
-                                const dacBiet = extractNumbers(0);
-                                const nhat = extractNumbers(2);
-                                const nhi = extractNumbers(3);
-                                const ba = extractNumbers(4);
-                                
-                                if (dacBiet) {
-                                    const insert = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
-                                    insert.run(dateStr, drawId, dacBiet, nhat, nhi, ba);
-                                    found = true;
-                                    await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${drawId} ngày ${dateStr}\n\n👉 Nhắn /on để truy cập Web xem chi tiết!`);
-                                }
-                            }
-                            
-                            if (found) {
-                                progressText += ` Cập nhật mới (#${drawId})`;
-                            } else {
-                                progressText += ` Không có KQ (Lỗi web VN)`;
-                            }
-                        }
-                    } else {
-                        progressText += ` Lỗi Format Ngày`;
-                    }
-                } else {
-                    progressText += ` Web bảo trì`;
-                }
-            } catch (e) {
-                progressText += ` Lỗi: ${e.message}`;
-            }
+                        const exists = checkStmt.get(data.drawId);
 
-            completed++;
-            const pct = Math.round((completed / totalGames) * 100);
-            progressText = progressText.replace(/\[\d+%\]/, `[${pct}%]`);
-            await editTelegramMessage(chatId, messageId, progressText);
-        }
+                        if (exists) {
+                            progressText += ` Bỏ qua (#${data.drawId})`;
+                        } else {
+                            if (game.code === '645') {
+                                const insert = db.prepare(`INSERT OR IGNORE INTO draws_645 (date, draw_id, balls) VALUES (?, ?, ?)`);
+                                insert.run(data.dateStr, data.drawId, data.balls);
+                                await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}\nBóng: ${data.balls}`);
+                            } else if (game.code === '655') {
+                                const insert = db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`);
+                                insert.run(data.dateStr, data.drawId, data.balls, data.special_ball);
+                                await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}\nBóng: ${data.balls}`);
+                            } else if (game.code === 'max-3dpro') {
+                                const insert = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
+                                insert.run(data.dateStr, data.drawId, data.dac_biet, data.nhat, data.nhi, data.ba);
+                                await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}`);
+                            }
+                            progressText += ` Cập nhật mới (#${data.drawId})`;
+                        }
+                    }
+                } catch (e) {
+                    progressText += ` Lỗi: ${e.message}`;
+                }
+
+                completed++;
+                const pct = Math.round((completed / totalGames) * 100);
+                progressText = progressText.replace(/\[\d+%\]/, `[${pct}%]`);
+                await editTelegramMessage(chatId, messageId, progressText);
+            }
 
         progressText += `\n\n✅ <b>Hoàn tất toàn bộ!</b>`;
         await editTelegramMessage(chatId, messageId, progressText);
