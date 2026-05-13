@@ -2261,6 +2261,50 @@ a[style*="borderRadius"], button[style*="borderRadius"] {
   margin-top: 4px;
 }
 
+/* Custom Select Styling */
+.custom-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-strong);
+  padding: 8px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--surface-border);
+  transition: all 0.2s ease;
+}
+
+.custom-select-wrapper:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(255, 46, 99, 0.2);
+}
+
+.custom-select {
+  background: none;
+  border: none;
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 24px;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2214%22%20height%3D%2214%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23ff2e63%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+}
+
+.custom-select option {
+  background: #111827; /* Dark background for options to prevent white-on-white */
+  color: white;
+  padding: 12px;
+}
+
+[data-theme='light'] .custom-select option {
+  background: white;
+  color: #1f2937;
+}
+
 @media (min-width: 480px) {
   .backtest-grid {
     grid-template-columns: repeat(4, 1fr);

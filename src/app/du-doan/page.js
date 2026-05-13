@@ -96,12 +96,12 @@ export default function PredictionPage() {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--surface)', padding: '6px 12px', borderRadius: '12px', border: '1px solid var(--surface-border)' }}>
+              <div className="custom-select-wrapper">
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Chế độ:</span>
                 <select 
                   value={bao} 
                   onChange={(e) => setBao(e.target.value)}
-                  style={{ background: 'none', border: 'none', color: 'var(--text)', fontWeight: 700, fontSize: '0.9rem', outline: 'none', cursor: 'pointer' }}
+                  className="custom-select"
                 >
                   <option value="standard">Tiêu chuẩn</option>
                   {(game === '645' || game === '655') && (
