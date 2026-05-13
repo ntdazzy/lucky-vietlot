@@ -63,8 +63,13 @@ export async function GET(request) {
             await editTelegramMessage(chatId, messageId, progressText);
 
             try {
+                const headers = { 
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
+                };
                 const url = `https://www.vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/${game.endpoint}`;
-                const res = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                const res = await axios.get(url, { headers });
                 const $ = cheerio.load(res.data);
                 
                 let validOption = null;
@@ -90,7 +95,7 @@ export async function GET(request) {
                         } else {
                             // Fetch chi tiết
                             const detailUrl = `https://www.vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/${game.code}?id=${drawId}&nocatche=1`;
-                            const detailRes = await axios.get(detailUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                            const detailRes = await axios.get(detailUrl, { headers });
                             const $d = cheerio.load(detailRes.data);
                             
                             let found = false;
@@ -135,13 +140,17 @@ export async function GET(request) {
                             if (found) {
                                 progressText += ` Cập nhật mới (#${drawId})`;
                             } else {
-                                progressText += ` Không có KQ (Lỗi?)`;
+                                progressText += ` Không có KQ (Lỗi web VN)`;
                             }
                         }
+                    } else {
+                        progressText += ` Lỗi Format Ngày`;
                     }
+                } else {
+                    progressText += ` Web bảo trì`;
                 }
             } catch (e) {
-                progressText += ` Lỗi kết nối`;
+                progressText += ` Lỗi: ${e.message}`;
             }
 
             completed++;
