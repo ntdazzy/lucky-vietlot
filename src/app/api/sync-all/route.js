@@ -144,17 +144,15 @@ export async function GET(request) {
                             lastProcessedId = parseInt(drawIdText) || 0;
                         });
 
-                        // Cập nhật tiến độ mỗi 5 trang
-                        if (page % 5 === 0) {
-                            let progMsg = progressText;
-                            if (targetDrawId > 0 && lastProcessedId > 0) {
-                                const count = targetDrawId - lastProcessedId + 1;
-                                progMsg += ` (${count}/${targetDrawId} kì)`;
-                            } else {
-                                progMsg += ` (Trang ${page})`;
-                            }
-                            await editTelegramMessage(chatId, messageId, progMsg);
+                        // Cập nhật tiến độ mỗi trang cho mượt
+                        let progMsg = progressText;
+                        if (targetDrawId > 0 && lastProcessedId > 0) {
+                            const count = targetDrawId - lastProcessedId + 1;
+                            progMsg += ` ⏳ (Kỳ ${count}/${targetDrawId})`;
+                        } else {
+                            progMsg += ` ⏳ (Đang xử lý trang ${page}...)`;
                         }
+                        await editTelegramMessage(chatId, messageId, progMsg);
                         
                         await new Promise(r => setTimeout(r, 200));
                     } catch (e) {
