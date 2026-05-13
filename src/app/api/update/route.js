@@ -69,7 +69,7 @@ export async function GET(request) {
                     'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
                 };
                 const url = `https://www.vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/${game.endpoint}`;
-                const res = await axios.get(url, { headers });
+                const res = await axios.get(url, { headers, timeout: 15000 });
                 const $ = cheerio.load(res.data);
                 
                 let validOption = null;
@@ -95,7 +95,7 @@ export async function GET(request) {
                         } else {
                             // Fetch chi tiết
                             const detailUrl = `https://www.vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/${game.code}?id=${drawId}&nocatche=1`;
-                            const detailRes = await axios.get(detailUrl, { headers });
+                            const detailRes = await axios.get(detailUrl, { headers, timeout: 15000 });
                             const $d = cheerio.load(detailRes.data);
                             
                             let found = false;
