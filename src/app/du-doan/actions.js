@@ -203,11 +203,16 @@ function runSingleStrategy(strategy, allNumbers, ballCount, maxBall, tierA, tier
   return { validCandidates, attempts };
 }
 
-export async function generatePrediction(game, useAllDraws = false) {
+export async function generatePrediction(game, useAllDraws = false, bao = null) {
   const gameConfig = getGame(game);
-  if (!gameConfig || !gameConfig.ballCount) return null;
+  if (!gameConfig) return null;
 
-  const { ballCount, maxBall, hasSpecialBall } = gameConfig;
+  let { ballCount, maxBall, hasSpecialBall } = gameConfig;
+  
+  // Override ballCount if "Bao" is selected
+  if (bao && bao !== 'standard') {
+    ballCount = parseInt(bao);
+  }
 
   const stats = getStats(game);
   const advanced = getAdvancedStats(game);
@@ -216,7 +221,6 @@ export async function generatePrediction(game, useAllDraws = false) {
   const deltaInfo = getDeltaPatterns(game);
   const decadeDist = getDecadeDistribution(game);
   
-  // Option: dùng TẤT CẢ các kỳ hoặc 200 kỳ gần nhất
   const recentDraws = getLatestDraws(game, useAllDraws ? 99999 : 200);
 
   if (stats.length === 0) return null;
@@ -234,8 +238,16 @@ export async function generatePrediction(game, useAllDraws = false) {
   allNumbers.sort((a, b) => b.score - a.score);
 
   const [defaultSumMin, defaultSumMax] = DEFAULT_SUM_RANGES[game] || [50, 170];
-  const targetSumMin = advanced?.sumMin ?? defaultSumMin;
-  const targetSumMax = advanced?.sumMax ?? defaultSumMax;
+  
+  // Adjust sum range for Bao
+  let targetSumMin = advanced?.sumMin ?? defaultSumMin;
+  let targetSumMax = advanced?.sumMax ?? defaultSumMax;
+  
+  if (bao && bao !== 'standard') {
+    const ratio = ballCount / (gameConfig.ballCount || 6);
+    targetSumMin = Math.round(targetSumMin * ratio);
+    targetSumMax = Math.round(targetSumMax * ratio);
+  }
 
   const validEvenOdd = new Set();
   if (advanced?.evenOddDist) {
@@ -247,9 +259,10 @@ export async function generatePrediction(game, useAllDraws = false) {
       if (cumulative >= 80) break;
     }
   }
-  if (validEvenOdd.size === 0) {
-    for (const eo of DEFAULT_EVEN_ODD[ballCount] || []) validEvenOdd.add(eo);
-  }
+  
+  // Skip even/odd and sum constraints for large Bao to avoid infinite loops, 
+  // or use relaxed constraints
+  const isBaoLarge = ballCount > 10;
 
   const spreadMin = deltaInfo?.spreadMin ?? Math.round(maxBall * 0.4);
   const spreadMax = deltaInfo?.spreadMax ?? Math.round(maxBall * 0.9);
@@ -261,7 +274,7 @@ export async function generatePrediction(game, useAllDraws = false) {
   const tierB = allNumbers.slice(tierSize, tierSize * 2);
   const tierC = allNumbers.slice(tierSize * 2);
 
-  // ENSEMBLE: Run all 3 strategies
+  // ENSEMBLE
   let allCandidates = [];
   let totalAttempts = 0;
   const strategyResults = [];
@@ -270,7 +283,8 @@ export async function generatePrediction(game, useAllDraws = false) {
     const result = runSingleStrategy(
       strategy, allNumbers, ballCount, maxBall, tierA, tierB, tierC,
       targetSumMin, targetSumMax, validEvenOdd, spreadMin, spreadMax,
-      recentSets, pairs, recentDraws.length
+      recentSets, pairs, recentDraws.length,
+      isBaoLarge ? 500 : 2000 // Less attempts for large bao to prevent lag
     );
     allCandidates.push(...result.validCandidates);
     totalAttempts += result.attempts;

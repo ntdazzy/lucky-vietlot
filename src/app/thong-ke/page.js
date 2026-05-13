@@ -49,6 +49,11 @@ export default async function ThongKePage({ searchParams }) {
         <h1 className="page-title">Thống Kê Trực Quan</h1>
         <p className="page-subtitle">
           Biểu đồ phân tích tần suất, xu hướng và phân bố xổ số — giúp bạn hiểu rõ hơn các con số
+          {stats.length > 0 && (
+            <span className="block mt-xs text-sm text-primary font-bold">
+              (Phân tích dựa trên {stats[0].count + stats[0].gap} kỳ quay lịch sử)
+            </span>
+          )}
         </p>
 
         <div className="game-picker mt-lg">

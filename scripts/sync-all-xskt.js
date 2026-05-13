@@ -15,7 +15,7 @@ const headers = {
     'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
 };
 
-let totalInserted = { mega: 0, power: 0, max3d: 0 };
+let totalInserted = { mega: 0, power: 0, max3d: 0, lotto535: 0 };
 
 function parseDateFromHref($el) {
     const href = $el.find('a[href*="/ngay-"]').attr('href');
@@ -28,9 +28,7 @@ function parseDateFromHref($el) {
 async function syncGame(gameCode, type = 'mega') {
     console.log(`\n=== Đồng bộ ${gameCode.toUpperCase()} ===`);
     let page = 1;
-    let consecutiveExists = 0;
-    const maxPages = 300; // An toàn
-    const maxConsecutive = 10; // Nếu gặp 10 kỳ đã tồn tại liên tiếp thì dừng (trừ khi là full sync)
+    const maxPages = type === 'lotto535' ? 100 : 300; 
     
     let tableName, stmt;
     if (type === 'mega') {
@@ -39,15 +37,18 @@ async function syncGame(gameCode, type = 'mega') {
     } else if (type === 'power') {
         tableName = 'draws_655';
         stmt = db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`);
+    } else if (type === 'lotto535') {
+        tableName = 'draws_535';
+        stmt = db.prepare(`INSERT OR IGNORE INTO draws_535 (id, date, draw_id, balls) VALUES (?, ?, ?, ?)`);
     } else {
         tableName = 'draws_max3dpro';
         stmt = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
     }
 
-    const gameUrl = type === 'mega' ? 'xsmega645' : type === 'power' ? 'xspower' : 'xsmax3dpro';
+    const gameUrl = type === 'mega' ? 'xsmega645' : type === 'power' ? 'xspower' : type === 'lotto535' ? 'xslotto-5-35' : 'xsmax3dpro';
 
     while (page <= maxPages) {
-        console.log(`Đang tải trang ${page}...`);
+        process.stdout.write(`Đang tải trang ${page}...\r`);
         try {
             const res = await axios.get(`https://xskt.com.vn/${gameUrl}/trang-${page}`, { headers, timeout: 15000 });
             const $ = cheerio.load(res.data);
@@ -63,24 +64,23 @@ async function syncGame(gameCode, type = 'mega') {
                 const drawIdText = $(el).find('a[href*="/ngay-"] b').text().replace('#', '').trim();
                 if (!drawIdText) return;
                 
-                // Tránh lấy nhầm kết quả game khác (thường drawId của Mega/Power > 500)
-                const drawId = parseInt(drawIdText);
-                if (isNaN(drawId)) return;
-
                 const dateStr = parseDateFromHref($(el));
                 if (!dateStr) return;
 
                 let result;
                 if (type === 'mega') {
                     const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
-                    if (balls) {
-                        result = stmt.run(dateStr, drawIdText, balls);
-                    }
+                    if (balls) result = stmt.run(dateStr, drawIdText, balls);
                 } else if (type === 'power') {
                     const balls = $(el).find('.megaresult').eq(0).find('em').text().trim().split(/\s+/).join(', ');
                     const special_ball = $(el).find('.jp2 .megaresult').text().trim();
+                    if (balls) result = stmt.run(dateStr, drawIdText, balls, special_ball);
+                } else if (type === 'lotto535') {
+                    const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
                     if (balls) {
-                        result = stmt.run(dateStr, drawIdText, balls, special_ball);
+                        // Lotto 5/35 has 2 draws per day, so we use date+drawId as primary key id
+                        const id = `${dateStr.replace(/\//g, '')}_${drawIdText.replace(/\s+/g, '')}`;
+                        result = stmt.run(id, dateStr, drawIdText, balls);
                     }
                 } else {
                     const extractMax = (trIndex) => $(el).find('tr').eq(trIndex).find('b').map((i, b) => $(b).text().trim().replace(/\s+/, ', ')).get().join(', ');
@@ -90,35 +90,27 @@ async function syncGame(gameCode, type = 'mega') {
                 if (result && result.changes > 0) {
                     totalInserted[type]++;
                     foundInPage++;
-                    consecutiveExists = 0;
-                } else {
-                    consecutiveExists++;
                 }
             });
 
-            console.log(`- Trang ${page}: Thêm mới ${foundInPage} kỳ.`);
-            
-            // Nếu trang này không có gì mới và trang trước cũng thế, có thể dừng (tùy nhu cầu)
-            // Tuy nhiên với "Sync All", ta nên đi hết hoặc đến khi gặp quá nhiều kỳ cũ
-            if (foundInPage === 0 && page > 5) {
-                 // Nếu đã qua vài trang đầu mà không có gì mới, có thể dừng
-                 // console.log("- Không có dữ liệu mới ở trang này. Dừng sync game này.");
-                 // break;
+            if (foundInPage === 0 && page > 20) {
+                // Thường thì đã sync hết nếu không có trang mới nào có kết quả mới
+                console.log(`\n- Đã bắt kịp dữ liệu cũ ở trang ${page}.`);
+                break;
             }
 
             page++;
-            // Tránh spam server quá nhanh
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 300));
             
         } catch (e) {
-            console.error(`Lỗi trang ${page}:`, e.message);
+            console.error(`\nLỗi trang ${page}:`, e.message);
             break;
         }
     }
 }
 
 async function main() {
-    console.log('🚀 Bắt đầu đồng bộ TOÀN BỘ dữ liệu từ XSKT (sử dụng pagination)...');
+    console.log('🚀 Bắt đầu đồng bộ TOÀN BỘ dữ liệu từ XSKT (Mega, Power, Max3DPro, Lotto 5/35)...');
     console.log(`📁 DB: ${dbPath}`);
     
     const startTime = Date.now();
@@ -126,12 +118,14 @@ async function main() {
     await syncGame('Mega 6/45', 'mega');
     await syncGame('Power 6/55', 'power');
     await syncGame('Max 3D Pro', 'max3d');
+    await syncGame('Lotto 5/35', 'lotto535');
     
     const elapsed = Math.round((Date.now() - startTime) / 1000);
     console.log(`\n📊 Tổng kết:`);
     console.log(`  Mega 6/45:    +${totalInserted.mega}`);
     console.log(`  Power 6/55:   +${totalInserted.power}`);
     console.log(`  Max 3D Pro:   +${totalInserted.max3d}`);
+    console.log(`  Lotto 5/35:   +${totalInserted.lotto535}`);
     console.log(`\n✅ Hoàn tất! Thời gian: ${elapsed}s`);
     
     db.close();

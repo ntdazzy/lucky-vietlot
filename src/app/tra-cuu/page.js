@@ -60,6 +60,14 @@ export default async function SearchPage({ searchParams }) {
   }
 
   const gameNames = getGameNames();
+  const db = getDb();
+  const counts = {};
+  for (const [code, tbl] of Object.entries(VALID_TABLES)) {
+    try {
+      const row = db.prepare(`SELECT COUNT(*) as n FROM ${tbl}`).get();
+      counts[code] = row.n;
+    } catch (e) { counts[code] = 0; }
+  }
 
   return (
     <div>
@@ -71,7 +79,10 @@ export default async function SearchPage({ searchParams }) {
 
         <div className="game-picker">
           {['645', '655', '535', 'max3dpro'].map(g => (
-            <a key={g} href={`/search?game=${g}&mode=${mode}&q=${query}`} className={`btn-game${game === g ? ' active' : ''}`}>{gameNames[g]}</a>
+            <a key={g} href={`/search?game=${g}&mode=${mode}&q=${query}`} className={`btn-game${game === g ? ' active' : ''}`}>
+              {gameNames[g]}
+              <span style={{ fontSize: '0.7rem', opacity: 0.8, marginLeft: '5px', display: 'block' }}>({counts[g]} kỳ)</span>
+            </a>
           ))}
         </div>
       </div>

@@ -71,6 +71,12 @@ export async function GET(request) {
                     maxPages: 50,
                 },
                 { 
+                    name: 'Lotto 5/35', 
+                    path: 'xslotto-5-35',
+                    type: 'lotto535',
+                    maxPages: 50,
+                },
+                { 
                     name: 'Max 3D Pro', 
                     path: 'xsmax3dpro',
                     type: 'max3d',
@@ -113,6 +119,12 @@ export async function GET(request) {
                                 const special = $(el).find('.jp2 .megaresult').text().trim();
                                 if (balls) {
                                     result = db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`).run(dateStr, drawIdText, balls, special);
+                                }
+                            } else if (cfg.type === 'lotto535') {
+                                const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
+                                if (balls) {
+                                    const id = `${dateStr.replace(/\//g, '')}_${drawIdText.replace(/\s+/g, '')}`;
+                                    result = db.prepare(`INSERT OR IGNORE INTO draws_535 (id, date, draw_id, balls) VALUES (?, ?, ?, ?)`).run(id, dateStr, drawIdText, balls);
                                 }
                             } else {
                                 const extractMax = (idx) => $(el).find('tr').eq(idx).find('b').map((j, b) => $(b).text().trim().replace(/\s+/, ', ')).get().join(', ');

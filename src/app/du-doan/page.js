@@ -15,6 +15,7 @@ export default function PredictionPage() {
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [useAllDraws, setUseAllDraws] = useState(false);
+  const [bao, setBao] = useState('standard');
 
   const loadHistory = useCallback(async () => {
     const h = await fetchHistory(game);
@@ -23,11 +24,11 @@ export default function PredictionPage() {
 
   const generate = useCallback(async () => {
     setLoading(true);
-    const result = await generatePrediction(game, useAllDraws);
+    const result = await generatePrediction(game, useAllDraws, bao);
     setPrediction(result);
     if (result) await loadHistory();
     setLoading(false);
-  }, [game, loadHistory, useAllDraws]);
+  }, [game, loadHistory, useAllDraws, bao]);
 
   useEffect(() => {
     loadHistory();
@@ -75,23 +76,51 @@ export default function PredictionPage() {
       ) : (
         <div className="prediction-content">
 
-          {/* DATA SOURCE TOGGLE */}
-          <div className="glass-panel data-source-panel">
-            <div className="data-source-toggle">
-              <button 
-                onClick={() => setUseAllDraws(false)} 
-                className={`data-source-btn${!useAllDraws ? ' active' : ''}`}
-              >
-                <Clock size={16} />
-                <span>200 kỳ gần nhất</span>
-              </button>
-              <button 
-                onClick={() => setUseAllDraws(true)} 
-                className={`data-source-btn${useAllDraws ? ' active' : ''}`}
-              >
-                <Database size={16} />
-                <span>Tất cả các kỳ</span>
-              </button>
+          {/* DATA SOURCE & BAO TOGGLE */}
+          <div className="glass-panel data-source-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="data-source-toggle">
+                <button 
+                  onClick={() => setUseAllDraws(false)} 
+                  className={`data-source-btn${!useAllDraws ? ' active' : ''}`}
+                >
+                  <Clock size={16} />
+                  <span>200 kỳ gần nhất</span>
+                </button>
+                <button 
+                  onClick={() => setUseAllDraws(true)} 
+                  className={`data-source-btn${useAllDraws ? ' active' : ''}`}
+                >
+                  <Database size={16} />
+                  <span>Tất cả các kỳ</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--surface)', padding: '6px 12px', borderRadius: '12px', border: '1px solid var(--surface-border)' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Chế độ:</span>
+                <select 
+                  value={bao} 
+                  onChange={(e) => setBao(e.target.value)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text)', fontWeight: 700, fontSize: '0.9rem', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="standard">Tiêu chuẩn</option>
+                  {(game === '645' || game === '655') && (
+                    <>
+                      <option value="5">Bao 5</option>
+                      {[7, 8, 9, 10, 11, 12, 13, 14, 15, 18].map(b => (
+                        <option key={b} value={b}>Bao {b}</option>
+                      ))}
+                    </>
+                  )}
+                  {game === '535' && (
+                    <>
+                      {[6, 7, 8, 9, 10].map(b => (
+                        <option key={b} value={b}>Bao {b}</option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
             </div>
             {prediction && (
               <div className="data-source-info">
