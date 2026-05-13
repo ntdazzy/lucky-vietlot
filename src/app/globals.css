@@ -1,35 +1,52 @@
+/* ==========================================================================
+   VIETLOTT ANALYTICS - GLOBAL STYLES (Mobile-First)
+   Base: 320px+ | 480px | 768px | 1024px
+   Spacing scale: 4, 8, 12, 16, 20, 24, 32, 40, 48
+   ========================================================================== */
+
+
+/* --------------------------------------------------------------------------
+   1. CSS CUSTOM PROPERTIES
+   -------------------------------------------------------------------------- */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Default Dark Mode */
+  --background: #0b0f19;
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-border: rgba(255, 255, 255, 0.1);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --surface-strong: rgba(0, 0, 0, 0.3);
+  --primary: #ff2a5f;
+  --primary-hover: #ff477e;
+  --secondary: #00e5ff;
+  --text-main: #ffffff;
+  --text-muted: #94a3b8;
+  --text-inverse: #0f172a;
+  --glass-blur: blur(12px);
+  --glow-primary: 0 0 20px rgba(255, 42, 95, 0.4);
+  --glow-secondary: 0 0 20px rgba(0, 229, 255, 0.4);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+[data-theme='light'] {
+  --background: #f8fafc;
+  --surface: rgba(255, 255, 255, 0.8);
+  --surface-border: rgba(0, 0, 0, 0.1);
+  --surface-hover: rgba(255, 255, 255, 1);
+  --surface-strong: rgba(0, 0, 0, 0.05);
+  --primary: #ff2a5f;
+  --primary-hover: #e01b4c;
+  --secondary: #00b8d4;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --text-inverse: #ffffff;
+  --glow-primary: 0 4px 15px rgba(255, 42, 95, 0.3);
+  --glow-secondary: 0 4px 15px rgba(0, 184, 212, 0.3);
 }
 
-html {
-  height: 100%;
-}
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+/* --------------------------------------------------------------------------
+   2. RESET & BASE (Mobile 320px+)
+   -------------------------------------------------------------------------- */
 
 * {
   box-sizing: border-box;
@@ -37,13 +54,1349 @@ body {
   margin: 0;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+body {
+  background-color: var(--background);
+  color: var(--text-main);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+h1 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+h3 {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+
+/* --------------------------------------------------------------------------
+   3. BACKGROUND EFFECTS
+   -------------------------------------------------------------------------- */
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -20%;
+  left: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, rgba(255,42,95,0.15) 0%, rgba(11,15,25,0) 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+[data-theme='light'] body::before {
+  background: radial-gradient(circle, rgba(255,42,95,0.1) 0%, rgba(248,250,252,0) 70%);
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  bottom: -20%;
+  right: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, rgba(0,229,255,0.15) 0%, rgba(11,15,25,0) 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+[data-theme='light'] body::after {
+  background: radial-gradient(circle, rgba(0,229,255,0.1) 0%, rgba(248,250,252,0) 70%);
+}
+
+
+/* --------------------------------------------------------------------------
+   4. LAYOUT
+   -------------------------------------------------------------------------- */
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+
+/* --------------------------------------------------------------------------
+   5. GLASS PANEL
+   -------------------------------------------------------------------------- */
+
+.glass-panel {
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease;
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+[data-theme='dark'] .glass-panel {
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.glass-panel:hover {
+  background: var(--surface-hover);
+  border-color: var(--surface-border);
+  transform: translateY(-2px);
+}
+
+
+/* --------------------------------------------------------------------------
+   6. TITLE GRADIENT
+   -------------------------------------------------------------------------- */
+
+.title-gradient {
+  background: linear-gradient(135deg, var(--text-main), var(--text-muted));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+
+/* --------------------------------------------------------------------------
+   7. BUTTONS
+   -------------------------------------------------------------------------- */
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: var(--glow-primary);
+  transition: all 0.3s ease;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 30px rgba(255, 42, 95, 0.6);
+}
+
+.btn-primary:active {
+  transform: translateY(0) scale(0.97);
+}
+
+
+/* --------------------------------------------------------------------------
+   8. PREMIUM 3D BALL STYLE
+   -------------------------------------------------------------------------- */
+
+.ball {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 0.8rem;
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #e2e8f0 60%, #cbd5e1 100%);
+  color: #0f172a;
+  border: 1px solid rgba(255,255,255,0.8);
+  box-shadow: 2px 4px 10px rgba(0,0,0,0.2), inset -2px -4px 6px rgba(0,0,0,0.1), inset 2px 2px 4px rgba(255,255,255,0.9);
+  margin: 2px;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.8);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  animation: fadeInUp 0.3s ease-out both;
+  flex-shrink: 0;
+}
+
+.ball:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 2px 6px 15px rgba(0,0,0,0.25), inset -2px -4px 6px rgba(0,0,0,0.1), inset 2px 2px 4px rgba(255,255,255,0.9);
+}
+
+[data-theme='light'] .ball {
+  box-shadow: 2px 4px 12px rgba(0,0,0,0.1), inset -2px -4px 6px rgba(0,0,0,0.05), inset 2px 2px 4px rgba(255,255,255,1);
+}
+
+[data-theme='light'] .ball:hover {
+  box-shadow: 2px 6px 15px rgba(0,0,0,0.15), inset -2px -4px 6px rgba(0,0,0,0.05), inset 2px 2px 4px rgba(255,255,255,1);
+}
+
+.ball.special {
+  background: radial-gradient(circle at 30% 30%, #ff7b9c 0%, var(--primary) 60%, #e01b4c 100%);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  box-shadow: 2px 4px 12px rgba(255, 42, 95, 0.4), inset -2px -4px 6px rgba(0,0,0,0.2), inset 2px 2px 4px rgba(255,255,255,0.6);
+}
+
+[data-theme='light'] .ball.special {
+  box-shadow: 2px 4px 12px rgba(255, 42, 95, 0.3), inset -2px -4px 6px rgba(0,0,0,0.1), inset 2px 2px 4px rgba(255,255,255,0.6);
+}
+
+
+/* --------------------------------------------------------------------------
+   9. FORM ELEMENTS
+   -------------------------------------------------------------------------- */
+
+input, select {
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
+  color: var(--text-main);
+  padding: 12px 16px;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+input:focus, select:focus {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.2);
+}
+
+
+/* --------------------------------------------------------------------------
+   10. TABLES
+   -------------------------------------------------------------------------- */
+
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+
+th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}
+
+td {
+  padding: 12px;
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  font-size: 0.85rem;
+}
+
+td:first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+  border-left: 1px solid var(--surface-border);
+}
+
+td:last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+  border-right: 1px solid var(--surface-border);
+}
+
+tr td {
+  border-top: 1px solid var(--surface-border);
+  border-bottom: 1px solid var(--surface-border);
+  transition: background 0.2s ease;
+}
+
+tbody tr:hover td {
+  background: var(--surface-hover);
+}
+
+
+/* --------------------------------------------------------------------------
+   11. CARD-ON-MOBILE (table to card conversion)
+   -------------------------------------------------------------------------- */
+
+.card-on-mobile thead {
+  display: none;
+}
+
+.card-on-mobile tbody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-on-mobile tr {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 12px;
+  gap: 8px;
+}
+
+.card-on-mobile td {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  font-size: 0.85rem;
+}
+
+.card-on-mobile td::before {
+  content: attr(data-label);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.card-on-mobile td:first-child,
+.card-on-mobile td:last-child {
+  border: none;
+  border-radius: 0;
+}
+
+
+/* --------------------------------------------------------------------------
+   12. SCROLLBAR
+   -------------------------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+
+/* --------------------------------------------------------------------------
+   13. NAVBAR (Mobile-first: hamburger by default)
+   -------------------------------------------------------------------------- */
+
+.navbar {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--background);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.navbar-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  text-decoration: none;
+  color: var(--text-main);
+  z-index: 60;
+}
+
+/* Desktop menu: hidden on mobile */
+.desktop-menu {
+  display: none;
+  gap: 20px;
+  align-items: center;
+}
+
+.nav-link {
+  text-decoration: none;
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.nav-link:hover {
+  color: var(--primary);
+}
+
+.theme-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.theme-toggle:hover {
+  background: var(--surface-strong);
+}
+
+/* Mobile controls: visible by default */
+.mobile-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 60;
+}
+
+.hamburger-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Mobile sidebar */
+.mobile-sidebar {
+  position: fixed;
+  top: 0;
+  right: -300px;
+  width: 280px;
+  height: 100vh;
+  background: var(--background);
+  border-left: 1px solid var(--surface-border);
+  transition: right 0.3s ease;
+  z-index: 55;
+  padding-top: 80px;
+  box-shadow: -5px 0 30px rgba(0,0,0,0.1);
+}
+
+.mobile-sidebar.open {
+  right: 0;
+}
+
+.mobile-sidebar-content {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 16px;
+}
+
+.mobile-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 500;
+  background: var(--surface);
+  min-height: 44px;
+}
+
+.mobile-nav-link:hover {
+  background: var(--surface-hover);
+  color: var(--primary);
+}
+
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  animation: fadeIn 0.3s ease;
+}
+
+
+/* --------------------------------------------------------------------------
+   14. UTILITY CLASSES - PAGE HEADER
+   -------------------------------------------------------------------------- */
+
+.page-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.page-title {
+  background: linear-gradient(135deg, var(--text-main), var(--text-muted));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: 12px;
+}
+
+.page-subtitle {
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.page-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 50px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+
+/* --------------------------------------------------------------------------
+   15. UTILITY CLASSES - STAT GRID & STAT CARD
+   -------------------------------------------------------------------------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  background: var(--surface-strong);
+  padding: 12px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.stat-card__label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-card__value {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.stat-card__sub {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+
+/* --------------------------------------------------------------------------
+   16. UTILITY CLASSES - BALL GROUP
+   -------------------------------------------------------------------------- */
+
+.ball-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+
+/* --------------------------------------------------------------------------
+   17. UTILITY CLASSES - GAME PICKER BUTTONS
+   -------------------------------------------------------------------------- */
+
+.btn-game {
+  padding: 10px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  color: var(--text-main);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-game:hover {
+  background: var(--surface-hover);
+}
+
+.btn-game.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: var(--glow-primary);
+  color: white;
+}
+
+/* Game picker container: horizontal scroll on mobile */
+.game-picker {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* When 4+ buttons, use 2x2 grid on small screens */
+.game-picker--grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+/* Horizontal scroll variant */
+.game-picker--scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+  scroll-snap-type: x mandatory;
+  justify-content: flex-start;
+}
+
+.game-picker--scroll .btn-game {
+  scroll-snap-align: start;
+  flex-shrink: 0;
+}
+
+
+/* --------------------------------------------------------------------------
+   18. UTILITY CLASSES - HISTORY ITEM
+   -------------------------------------------------------------------------- */
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-strong);
+  padding: 12px;
+  border-radius: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.history-item__balls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.history-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+
+/* --------------------------------------------------------------------------
+   19. UTILITY CLASSES - ALGORITHM CARD
+   -------------------------------------------------------------------------- */
+
+.algo-card {
+  background: var(--surface-strong);
+  padding: 12px;
+  border-radius: 10px;
+  border-left: 3px solid var(--primary);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.algo-card__title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+
+/* --------------------------------------------------------------------------
+   20. UTILITY CLASSES - BREAKDOWN GRID
+   -------------------------------------------------------------------------- */
+
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+
+/* --------------------------------------------------------------------------
+   21. ACCESSIBILITY - FOCUS & TOUCH TARGETS
+   -------------------------------------------------------------------------- */
+
+input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--secondary);
+  outline-offset: 2px;
+}
+
+/* All interactive elements: 44px minimum touch target */
+button, a, input, select, [role="button"] {
+  min-height: 44px;
+}
+
+a {
+  min-height: auto;
+}
+
+a:not(.nav-link):not(.mobile-nav-link):not(.btn-primary):not(.btn-game) {
+  min-height: auto;
+}
+
+
+/* --------------------------------------------------------------------------
+   22. ANIMATIONS
+   -------------------------------------------------------------------------- */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-in {
+  animation: fadeInUp 0.4s ease-out both;
+}
+
+.animate-in-1 { animation-delay: 0.05s; }
+.animate-in-2 { animation-delay: 0.1s; }
+.animate-in-3 { animation-delay: 0.15s; }
+.animate-in-4 { animation-delay: 0.2s; }
+
+main, .container {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+/* Tab / pill style links */
+a[style*="borderRadius"], button[style*="borderRadius"] {
+  transition: all 0.2s ease;
+}
+
+
+/* ==========================================================================
+   BREAKPOINT: 480px (Large Phone)
+   ========================================================================== */
+
+@media (min-width: 480px) {
+  .ball {
+    width: 38px;
+    height: 38px;
+    font-size: 0.9rem;
+    margin: 3px;
+  }
+
+  .glass-panel {
+    padding: 18px;
+    border-radius: 14px;
+  }
+
+  .container {
+    padding: 0 20px;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .breakdown-grid {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 10px;
+  }
+
+  .page-title {
+    font-size: 2.5rem;
+  }
+
+  .page-badge {
+    font-size: 0.8rem;
+    padding: 8px 20px;
+  }
+
+  .history-item {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  td {
+    font-size: 0.9rem;
+  }
+
+  /* Card-on-mobile switches back to table at 480px */
+  .card-on-mobile thead {
+    display: table-header-group;
+  }
+
+  .card-on-mobile tbody {
+    display: table-row-group;
+  }
+
+  .card-on-mobile tr {
+    display: table-row;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    gap: 0;
+  }
+
+  .card-on-mobile td {
+    display: table-cell;
+    justify-content: initial;
+    padding: 12px;
+    background: var(--surface);
+    border-top: 1px solid var(--surface-border);
+    border-bottom: 1px solid var(--surface-border);
+    font-size: 0.9rem;
+  }
+
+  .card-on-mobile td::before {
+    content: none;
+  }
+
+  .card-on-mobile td:first-child {
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+    border-left: 1px solid var(--surface-border);
+  }
+
+  .card-on-mobile td:last-child {
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+    border-right: 1px solid var(--surface-border);
+  }
+
+  /* Game picker grid reverts to flex at 480px */
+  .game-picker--grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: none;
+  }
+}
+
+
+/* ==========================================================================
+   BREAKPOINT: 768px (Tablet)
+   ========================================================================== */
+
+@media (min-width: 768px) {
+  .ball {
+    width: 44px;
+    height: 44px;
+    font-size: 1.1rem;
+    margin: 4px;
+  }
+
+  .glass-panel {
+    padding: 24px;
+    border-radius: 16px;
+  }
+
+  .container {
+    padding: 0 24px;
+  }
+
+  h1 {
+    font-size: 2.25rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.15rem;
+  }
+
+  /* Navbar switches to desktop mode */
+  .navbar {
+    padding: 16px 24px;
+  }
+
+  .logo {
+    font-size: 1.5rem;
+  }
+
+  .desktop-menu {
+    display: flex;
+  }
+
+  .mobile-controls {
+    display: none;
+  }
+
+  /* Table restores full padding */
+  th {
+    padding: 12px 16px;
+    font-size: 0.85rem;
+  }
+
+  td {
+    padding: 16px;
+    font-size: 1rem;
+  }
+
+  /* Stat grid */
+  .stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 24px;
+  }
+
+  .stat-card {
+    padding: 16px;
+  }
+
+  /* Page header */
+  .page-header {
+    margin-bottom: 40px;
+  }
+
+  .page-title {
+    font-size: 3rem;
+    margin-bottom: 16px;
+  }
+
+  .page-subtitle {
+    font-size: 1.2rem;
+  }
+
+  .page-badge {
+    font-size: 0.85rem;
+    padding: 12px 24px;
+    margin-bottom: 24px;
+  }
+
+  /* Algo card */
+  .algo-card {
+    padding: 14px;
+    font-size: 0.9rem;
+  }
+
+  /* Breakdown */
+  .breakdown-grid {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+  }
+
+  /* History */
+  .history-item {
+    flex-wrap: nowrap;
+  }
+
+  .btn-primary {
+    padding: 12px 24px;
+  }
+
+  .btn-game {
+    padding: 12px 24px;
+    font-size: 0.9rem;
+  }
+}
+
+
+/* ==========================================================================
+   BREAKPOINT: 1024px (Desktop)
+   ========================================================================== */
+
+@media (min-width: 1024px) {
+  h1 {
+    font-size: 2.75rem;
+  }
+
+  h2 {
+    font-size: 1.75rem;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+  }
+
+  .page-title {
+    font-size: 3.5rem;
+  }
+
+  .page-subtitle {
+    font-size: 1.3rem;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+
+  .stat-card {
+    padding: 20px;
+  }
+
+  .stat-card__value {
+    font-size: 1.4rem;
+  }
+
+  .algo-card {
+    padding: 16px;
+    font-size: 0.95rem;
+  }
+
+  .breakdown-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+
+/* --------------------------------------------------------------------------
+   23. PREDICTION PAGE UTILITIES
+   -------------------------------------------------------------------------- */
+
+/* Gold power ball (655 special number) */
+.ball.gold {
+  background: radial-gradient(circle at 30% 30%, #fde047, #eab308 60%, #ca8a04);
+  color: #1a1a2e;
+  border: none;
+  box-shadow: 0 0 20px rgba(234, 179, 8, 0.4), inset -2px -4px 6px rgba(0, 0, 0, 0.2), inset 2px 2px 4px rgba(255, 255, 255, 0.6);
+  text-shadow: none;
+}
+
+/* Large ball variant for main prediction display */
+.ball--lg {
+  width: 48px;
+  height: 48px;
+  font-size: 1.3rem;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Top-scored item */
+.top-scored-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--surface-strong);
+  padding: 10px 14px;
+  border-radius: 12px;
+  min-width: 55px;
+}
+
+.top-scored-item__score {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 5px;
+}
+
+/* Prediction content wrapper */
+.prediction-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* Section header with icon */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* Flex between (space-between row) */
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* Button group */
+.btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* Clear/delete button */
+.btn-danger {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* Subtle toggle button */
+.btn-ghost {
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  min-height: 44px;
+}
+
+.btn-ghost:hover {
+  background: var(--surface-hover);
+}
+
+/* History list */
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* Algo grid */
+.algo-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+/* Loading center */
+.loading-center {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+}
+
+.loading-center__text {
+  margin-top: 12px;
+}
+
+/* Generate button full width */
+.btn-generate {
+  width: 100%;
+  padding: 14px;
+  font-size: 1.1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Muted text */
+.text-muted {
+  color: var(--text-muted);
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-sm {
+  font-size: 0.85rem;
+}
+
+.text-xs {
+  font-size: 0.75rem;
+}
+
+.m-0 {
+  margin: 0;
+}
+
+.mb-sm {
+  margin-bottom: 14px;
+}
+
+.mb-md {
+  margin-bottom: 20px;
+}
+
+.mt-lg {
+  margin-top: 24px;
+}
+
+.mx-auto-sm {
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Inline icon + text */
+.inline-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* No margin on ball (inside history/list contexts) */
+.ball.no-margin {
+  margin: 0;
+}
+
+/* Centered section header */
+.section-header--center {
+  justify-content: center;
+}
+
+/* Ball group centered */
+.ball-group--center {
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+/* History index number */
+.history-item__index {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  min-width: 20px;
+}
+
+/* Top scored description */
+.top-scored-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+/* Hidden history summary */
+.history-summary {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Empty state */
+.empty-state {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 20px;
+  font-size: 0.9rem;
+}
+
+/* Top scored list */
+.top-scored-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Badge colors */
+.page-badge--warning {
+  background: rgba(234, 179, 8, 0.1);
+  color: #eab308;
+}
+
+/* Decorative BG icon */
+.decor-icon {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  opacity: 0.07;
+  pointer-events: none;
+}
+
+/* Panel with relative positioning for decor */
+.glass-panel--relative {
+  position: relative;
+  overflow: hidden;
+}
+
+@media (min-width: 480px) {
+  .ball--lg {
+    width: 56px;
+    height: 56px;
+    font-size: 1.5rem;
+  }
+
+  .algo-grid {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  .ball--lg {
+    width: 68px;
+    height: 68px;
+    font-size: 1.9rem;
+  }
+
+  .top-scored-item {
+    padding: 10px 14px;
+    min-width: 65px;
   }
 }
