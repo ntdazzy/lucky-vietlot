@@ -27,6 +27,20 @@ async function editTelegramMessage(chatId, messageId, text) {
     } catch (e) {}
 }
 
+const XSKT_HEADERS = { 
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
+};
+
+function parseDateFromHref($, el) {
+    const href = $(el).find('.kmt a').attr('href');
+    if (!href) return null;
+    const match = href.match(/ngay-(.+)/);
+    if (!match) return null;
+    return match[1].replace(/-/g, '/');
+}
+
 export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const chatId = searchParams.get('chat_id');
@@ -40,73 +54,75 @@ export async function GET(request) {
     (async () => {
         try {
             const db = getDbWritable();
-            let progressText = `⚡ <b>Bắt đầu đồng bộ hóa toàn bộ dữ liệu lịch sử...</b>\n`;
+            let progressText = `⚡ <b>Bắt đầu đồng bộ hóa dữ liệu...</b>\n`;
             await editTelegramMessage(chatId, messageId, progressText);
 
-            const headers = { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
-            };
-
             const configs = [
-                { name: 'Mega 6/45', path: 'xsmega645', table: 'draws_645', pages: 30 },
-                { name: 'Power 6/55', path: 'xspower', table: 'draws_655', pages: 30 },
-                { name: 'Max 3D Pro', path: 'xsmax3dpro', table: 'draws_max3dpro', pages: 20 }
+                { 
+                    name: 'Mega 6/45', 
+                    url: 'https://xskt.com.vn/xsmega645/200-ngay',
+                    tableSelector: 'table.result',
+                    parse: ($, el) => {
+                        const drawId = $(el).find('.kmt b').text().replace('#', '').trim();
+                        const dateStr = parseDateFromHref($, el);
+                        const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
+                        return drawId && balls && dateStr ? { drawId, dateStr, balls } : null;
+                    },
+                    insert: (db, d) => db.prepare(`INSERT OR IGNORE INTO draws_645 (date, draw_id, balls) VALUES (?, ?, ?)`).run(d.dateStr, d.drawId, d.balls)
+                },
+                { 
+                    name: 'Power 6/55', 
+                    url: 'https://xskt.com.vn/xspower/200-ngay',
+                    tableSelector: 'table.result',
+                    parse: ($, el) => {
+                        const drawId = $(el).find('.kmt b').text().replace('#', '').trim();
+                        const dateStr = parseDateFromHref($, el);
+                        const balls = $(el).find('.megaresult').eq(0).find('em').text().trim().split(/\s+/).join(', ');
+                        const special = $(el).find('.jp2 .megaresult').text().trim();
+                        return drawId && balls && dateStr ? { drawId, dateStr, balls, special } : null;
+                    },
+                    insert: (db, d) => db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`).run(d.dateStr, d.drawId, d.balls, d.special)
+                },
+                { 
+                    name: 'Max 3D Pro', 
+                    url: 'https://xskt.com.vn/xsmax3dpro/200-ngay',
+                    tableSelector: 'table.max3d',
+                    parse: ($, el) => {
+                        const drawId = $(el).find('.kmt b').text().replace('#', '').trim();
+                        const dateStr = parseDateFromHref($, el);
+                        const extractMax = (idx) => $(el).find('tr').eq(idx).find('b').map((i, b) => $(b).text().trim().replace(/\s+/, ', ')).get().join(', ');
+                        return drawId && dateStr ? { drawId, dateStr, dac_biet: extractMax(1), nhat: extractMax(3), nhi: extractMax(4), ba: extractMax(5) } : null;
+                    },
+                    insert: (db, d) => db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`).run(d.dateStr, d.drawId, d.dac_biet, d.nhat, d.nhi, d.ba)
+                }
             ];
 
             for (const cfg of configs) {
                 progressText += `\n📦 <b>Đang đồng bộ ${cfg.name}...</b>`;
                 await editTelegramMessage(chatId, messageId, progressText);
 
-                for (let p = 1; p <= cfg.pages; p++) {
-                    const res = await axios.get(`https://xskt.com.vn/${cfg.path}/p/${p}`, { headers });
+                try {
+                    const res = await axios.get(cfg.url, { headers: XSKT_HEADERS, timeout: 30000 });
                     const $ = cheerio.load(res.data);
-                    
-                    if (cfg.path === 'xsmax3dpro') {
-                        const tables = $('table.max3d');
-                        if (tables.length === 0) break;
-                        tables.each((i, el) => {
-                            const drawId = $(el).find('.kmt b').text().replace('#', '').trim();
-                            const dateStr = $(el).find('.kmt a').attr('href').match(/ngay-(.+)/)[1].replace(/-/g, '/');
-                            const extractMax = (idx) => $(el).find('tr').eq(idx).find('b').map((i, b) => $(b).text().trim().replace(/\s+/, ', ')).get().join(', ');
-                            if (drawId) {
-                                const insert = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
-                                insert.run(dateStr, drawId, extractMax(1), extractMax(3), extractMax(4), extractMax(5));
-                            }
-                        });
-                    } else {
-                        const tables = $('table.result');
-                        if (tables.length === 0) break;
-                        tables.each((i, el) => {
-                            const drawId = $(el).find('.kmt b').text().replace('#', '').trim();
-                            const dateStr = $(el).find('.kmt a').attr('href').match(/ngay-(.+)/)[1].replace(/-/g, '/');
-                            if (cfg.path === 'xsmega645') {
-                                const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
-                                if (drawId && balls) {
-                                    const insert = db.prepare(`INSERT OR IGNORE INTO draws_645 (date, draw_id, balls) VALUES (?, ?, ?)`);
-                                    insert.run(dateStr, drawId, balls);
-                                }
-                            } else {
-                                const balls = $(el).find('.megaresult').eq(0).find('em').text().trim().split(/\s+/).join(', ');
-                                const special = $(el).find('.jp2 .megaresult').text().trim();
-                                if (drawId && balls) {
-                                    const insert = db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`);
-                                    insert.run(dateStr, drawId, balls, special);
-                                }
-                            }
-                        });
-                    }
-                    if (p % 5 === 0) {
-                        await editTelegramMessage(chatId, messageId, progressText + ` (Trang ${p}/${cfg.pages})`);
-                    }
-                    await new Promise(r => setTimeout(r, 800));
+                    const tables = $(cfg.tableSelector);
+                    let inserted = 0;
+
+                    tables.each((i, el) => {
+                        const data = cfg.parse($, el);
+                        if (data) {
+                            const result = cfg.insert(db, data);
+                            if (result.changes > 0) inserted++;
+                        }
+                    });
+
+                    progressText += ` ✅ (${tables.length} kỳ, +${inserted} mới)`;
+                } catch (e) {
+                    progressText += ` ❌ ${e.message}`;
                 }
-                progressText += ` OK!`;
                 await editTelegramMessage(chatId, messageId, progressText);
             }
 
-            progressText += `\n\n✅ <b>HOÀN TẤT ĐỒNG BỘ LỊCH SỬ!</b>`;
+            progressText += `\n\n✅ <b>HOÀN TẤT ĐỒNG BỘ!</b>`;
             await editTelegramMessage(chatId, messageId, progressText);
 
         } catch (e) {

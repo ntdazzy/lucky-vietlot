@@ -3,7 +3,7 @@ import {
   getStats, getAdvancedStats, getSpecialBallStats, getTransitionMatrix,
   getDeltaPatterns, getDecadeDistribution, savePredictionHistory,
   getPredictionHistory as dbGetHistory, clearPredictionHistory as dbClearHistory,
-  deletePredictionById as dbDeleteById, getLatestDraws
+  deletePredictionById as dbDeleteById, getLatestDraws, backtestStrategy
 } from '@/lib/db';
 import { getGame } from '@/lib/games';
 
@@ -27,6 +27,13 @@ const POPULAR_PATTERNS = [
   '01,02,03,04,05,06', '01,02,03,04,05',
   '07,14,21,28,35,42', '07,14,21,28,35',
   '02,04,06,08,10,12', '01,03,05,07,09,11',
+];
+
+// Ensemble strategies
+const ENSEMBLE_STRATEGIES = [
+  { name: 'Hot Hunter', tempRange: [0.15, 0.35], tierWeight: [5, 3, 2], desc: 'Ưu tiên số nóng' },
+  { name: 'Balanced', tempRange: [0.35, 0.55], tierWeight: [3, 3, 3], desc: 'Cân bằng' },
+  { name: 'Cold Catcher', tempRange: [0.55, 0.85], tierWeight: [2, 3, 5], desc: 'Săn số lạnh' },
 ];
 
 function weightedPick(pool, temperature = 0.5) {
@@ -127,7 +134,76 @@ function sameLastDigitCount(nums) {
   return Math.max(...Object.values(digitCounts));
 }
 
-export async function generatePrediction(game) {
+function runSingleStrategy(strategy, allNumbers, ballCount, maxBall, tierA, tierB, tierC, 
+                           targetSumMin, targetSumMax, validEvenOdd, spreadMin, spreadMax,
+                           recentSets, pairs, recentDrawsCount, maxAttempts = 2000) {
+  const tierConfigs = TIER_CONFIGS[ballCount] || TIER_CONFIGS[6];
+  const minDecades = Math.max(2, Math.ceil(ballCount / 2));
+  const validCandidates = [];
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    const selected = new Set();
+    const config = tierConfigs[Math.floor(Math.random() * tierConfigs.length)];
+    const temp = strategy.tempRange[0] + Math.random() * (strategy.tempRange[1] - strategy.tempRange[0]);
+
+    // Use tier weights to determine how many from each tier
+    const totalWeight = strategy.tierWeight.reduce((a, b) => a + b, 0);
+    const fromA = Math.round((strategy.tierWeight[0] / totalWeight) * ballCount);
+    const fromB = Math.round((strategy.tierWeight[1] / totalWeight) * ballCount);
+    // rest from C
+
+    while (selected.size < Math.min(fromA, ballCount)) selected.add(weightedPick(tierA, temp));
+    while (selected.size < Math.min(fromA + fromB, ballCount)) selected.add(weightedPick(tierB, temp));
+    while (selected.size < ballCount) selected.add(weightedPick(tierC, temp));
+
+    const candidate = Array.from(selected).sort((a, b) => parseInt(a) - parseInt(b));
+    const nums = candidate.map(n => parseInt(n));
+    const sum = nums.reduce((a, b) => a + b, 0);
+    const evens = nums.filter(n => n % 2 === 0).length;
+    const eoKey = `${evens}/${ballCount - evens}`;
+
+    if (sum < targetSumMin || sum > targetSumMax) continue;
+    if (!validEvenOdd.has(eoKey)) continue;
+
+    const sorted = [...nums].sort((a, b) => a - b);
+    const spread = sorted[ballCount - 1] - sorted[0];
+
+    if (spread < spreadMin || spread > spreadMax) continue;
+    if (recentSets.includes(sorted.join(','))) continue;
+
+    const decades = new Set(sorted.map(n => Math.floor((n - 1) / 10)));
+    if (decades.size < minDecades) continue;
+    if (countConsecutivePairs(sorted) > 1) continue;
+    if (sameLastDigitCount(nums) > Math.ceil(ballCount / 2)) continue;
+    if (isPopularPattern(sorted.map(n => n.toString().padStart(2, '0')).join(','))) continue;
+
+    const scoreMap = {};
+    allNumbers.forEach(x => { scoreMap[x.n] = x.score; });
+    const baseScore = candidate.reduce((s, n) => s + (scoreMap[n] || 0), 0);
+
+    let pairBonus = 0;
+    for (let i = 0; i < candidate.length; i++) {
+      const others = candidate.filter((_, j) => j !== i);
+      pairBonus += pairScore(candidate[i], others, pairs);
+    }
+    pairBonus = (pairBonus / (recentDrawsCount || 1)) * 5;
+
+    const sumMid = (targetSumMin + targetSumMax) / 2;
+    const sumProximity = 1 - Math.abs(sum - sumMid) / ((targetSumMax - targetSumMin) / 2);
+    const proximityBonus = sumProximity * 5;
+
+    const totalScore = baseScore + pairBonus + proximityBonus;
+    validCandidates.push({ candidate, totalScore, baseScore, pairBonus, strategy: strategy.name });
+
+    if (validCandidates.length >= 15) break;
+  }
+
+  return { validCandidates, attempts };
+}
+
+export async function generatePrediction(game, useAllDraws = false) {
   const gameConfig = getGame(game);
   if (!gameConfig || !gameConfig.ballCount) return null;
 
@@ -139,7 +215,9 @@ export async function generatePrediction(game) {
   const matrix = getTransitionMatrix(game, 3);
   const deltaInfo = getDeltaPatterns(game);
   const decadeDist = getDecadeDistribution(game);
-  const recentDraws = getLatestDraws(game, 200);
+  
+  // Option: dùng TẤT CẢ các kỳ hoặc 200 kỳ gần nhất
+  const recentDraws = getLatestDraws(game, useAllDraws ? 99999 : 200);
 
   if (stats.length === 0) return null;
 
@@ -177,89 +255,37 @@ export async function generatePrediction(game) {
   const spreadMax = deltaInfo?.spreadMax ?? Math.round(maxBall * 0.9);
   const recentSets = (advanced?.recentDrawBalls || []).map(b => [...b].sort((a, c) => a - c).join(','));
 
-  // Build 3 tiers: hot (top 33%), warm (mid), cold (bottom 33%)
+  // Build 3 tiers
   const tierSize = Math.round(maxBall / 3);
   const tierA = allNumbers.slice(0, tierSize);
   const tierB = allNumbers.slice(tierSize, tierSize * 2);
   const tierC = allNumbers.slice(tierSize * 2);
 
-  const tierConfigs = TIER_CONFIGS[ballCount] || TIER_CONFIGS[6];
-  const minDecades = Math.max(2, Math.ceil(ballCount / 2));
-  const validCandidates = [];
-  let attempts = 0;
+  // ENSEMBLE: Run all 3 strategies
+  let allCandidates = [];
+  let totalAttempts = 0;
+  const strategyResults = [];
 
-  while (attempts < 5000) {
-    attempts++;
-    const selected = new Set();
-    const config = tierConfigs[Math.floor(Math.random() * tierConfigs.length)];
-    const temp = 0.3 + Math.random() * 0.5;
-
-    while (selected.size < config[0]) selected.add(weightedPick(tierA, temp));
-    while (selected.size < config[0] + config[1]) selected.add(weightedPick(tierB, temp));
-    while (selected.size < ballCount) selected.add(weightedPick(tierC, temp));
-
-    const candidate = Array.from(selected).sort((a, b) => parseInt(a) - parseInt(b));
-    const nums = candidate.map(n => parseInt(n));
-    const sum = nums.reduce((a, b) => a + b, 0);
-    const evens = nums.filter(n => n % 2 === 0).length;
-    const eoKey = `${evens}/${ballCount - evens}`;
-
-    // Filter 1: Sum range
-    if (sum < targetSumMin || sum > targetSumMax) continue;
-
-    // Filter 2: Even/Odd common patterns
-    if (!validEvenOdd.has(eoKey)) continue;
-
-    const sorted = [...nums].sort((a, b) => a - b);
-    const spread = sorted[ballCount - 1] - sorted[0];
-
-    // Filter 3: Spread range
-    if (spread < spreadMin || spread > spreadMax) continue;
-
-    // Filter 4: Not a duplicate of recent draws
-    if (recentSets.includes(sorted.join(','))) continue;
-
-    // Filter 5: Decade diversity
-    const decades = new Set(sorted.map(n => Math.floor((n - 1) / 10)));
-    if (decades.size < minDecades) continue;
-
-    // Filter 6: Max 1 consecutive pair (e.g., 12-13)
-    if (countConsecutivePairs(sorted) > 1) continue;
-
-    // Filter 7: No more than 3 numbers with same last digit
-    if (sameLastDigitCount(nums) > Math.ceil(ballCount / 2)) continue;
-
-    // Filter 8: Avoid popular patterns (anti-jackpot-split)
-    if (isPopularPattern(sorted.map(n => n.toString().padStart(2, '0')).join(','))) continue;
-
-    // Score the candidate using base score + pair correlation bonus
-    const scoreMap = {};
-    allNumbers.forEach(x => { scoreMap[x.n] = x.score; });
-    const baseScore = candidate.reduce((s, n) => s + (scoreMap[n] || 0), 0);
-
-    let pairBonus = 0;
-    for (let i = 0; i < candidate.length; i++) {
-      const others = candidate.filter((_, j) => j !== i);
-      pairBonus += pairScore(candidate[i], others, pairs);
-    }
-    pairBonus = (pairBonus / (recentDraws.length || 1)) * 5;
-
-    // Sum proximity bonus — gần mean được +5
-    const sumMid = (targetSumMin + targetSumMax) / 2;
-    const sumProximity = 1 - Math.abs(sum - sumMid) / ((targetSumMax - targetSumMin) / 2);
-    const proximityBonus = sumProximity * 5;
-
-    const totalScore = baseScore + pairBonus + proximityBonus;
-    validCandidates.push({ candidate, totalScore, baseScore, pairBonus });
-
-    if (validCandidates.length >= 30) break;
+  for (const strategy of ENSEMBLE_STRATEGIES) {
+    const result = runSingleStrategy(
+      strategy, allNumbers, ballCount, maxBall, tierA, tierB, tierC,
+      targetSumMin, targetSumMax, validEvenOdd, spreadMin, spreadMax,
+      recentSets, pairs, recentDraws.length
+    );
+    allCandidates.push(...result.validCandidates);
+    totalAttempts += result.attempts;
+    strategyResults.push({
+      name: strategy.name,
+      desc: strategy.desc,
+      candidates: result.validCandidates.length,
+      bestScore: result.validCandidates[0]?.totalScore || 0,
+    });
   }
 
   let best, bestScore;
-  if (validCandidates.length > 0) {
-    validCandidates.sort((a, b) => b.totalScore - a.totalScore);
-    // Pick from top 5 randomly for diversity
-    const topN = validCandidates.slice(0, Math.min(5, validCandidates.length));
+  if (allCandidates.length > 0) {
+    allCandidates.sort((a, b) => b.totalScore - a.totalScore);
+    const topN = allCandidates.slice(0, Math.min(5, allCandidates.length));
     const pick = topN[Math.floor(Math.random() * topN.length)];
     best = pick.candidate;
     bestScore = pick.totalScore;
@@ -270,7 +296,7 @@ export async function generatePrediction(game) {
     bestScore = 0;
   }
 
-  // Special ball: exclude last 3 special balls + use top-weighted with gap bonus
+  // Special ball
   let special = null;
   if (hasSpecialBall) {
     const recentSpecials = new Set(
@@ -288,14 +314,37 @@ export async function generatePrediction(game) {
   const nums = best.map(n => parseInt(n));
   const sorted = [...nums].sort((a, b) => a - b);
 
+  // Backtest
+  let backtestResult = null;
+  try {
+    const simpleStrategy = (history) => {
+      const freq = {};
+      for (const d of history.slice(-200)) {
+        if (!d.balls) continue;
+        d.balls.split(',').map(b => b.trim()).forEach(b => {
+          freq[b] = (freq[b] || 0) + 1;
+        });
+      }
+      return Object.entries(freq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, ballCount)
+        .map(([n]) => n);
+    };
+    backtestResult = backtestStrategy(game, simpleStrategy, 100);
+  } catch (e) {}
+
   const result = {
     main: best,
     special,
-    attempts,
-    candidatesFound: validCandidates.length,
+    attempts: totalAttempts,
+    candidatesFound: allCandidates.length,
     sumRange: [targetSumMin, targetSumMax],
     confidence: Math.round(bestScore * 10) / 10,
     topScored,
+    useAllDraws,
+    drawsAnalyzed: recentDraws.length,
+    strategyResults,
+    backtestResult,
     breakdown: {
       sum: nums.reduce((a, b) => a + b, 0),
       evens: nums.filter(n => n % 2 === 0).length,

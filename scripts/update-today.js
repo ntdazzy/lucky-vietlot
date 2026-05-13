@@ -8,12 +8,6 @@ const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
     : path.join(__dirname, '..', 'vietlott.db');
 const db = new Database(dbPath);
 
-const GAMES = [
-    { code: '645', name: 'Mega 6/45', endpoint: 'winning-number-645' },
-    { code: '655', name: 'Power 6/55', endpoint: 'winning-number-655' },
-    { code: 'max-3dpro', name: 'Max 3D Pro', endpoint: 'winning-number-max-3dpro' }
-];
-
 async function sendTelegramNotification(message) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -86,6 +80,8 @@ async function updateLatestDraw() {
             }
         ];
 
+        const newResults = [];
+
         for (const game of gamesToParse) {
             console.log(`Checking latest draw for ${game.name}...`);
             try {
@@ -106,14 +102,17 @@ async function updateLatestDraw() {
                     if (game.code === '645') {
                         const insert = db.prepare(`INSERT OR IGNORE INTO draws_645 (date, draw_id, balls) VALUES (?, ?, ?)`);
                         insert.run(data.dateStr, data.drawId, data.balls);
+                        newResults.push({ game: game.name, drawId: data.drawId, date: data.dateStr, balls: data.balls });
                         await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}\nBóng: ${data.balls}`);
                     } else if (game.code === '655') {
                         const insert = db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`);
                         insert.run(data.dateStr, data.drawId, data.balls, data.special_ball);
+                        newResults.push({ game: game.name, drawId: data.drawId, date: data.dateStr, balls: data.balls, special: data.special_ball });
                         await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}\nBóng: ${data.balls}`);
                     } else if (game.code === 'max-3dpro') {
                         const insert = db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`);
                         insert.run(data.dateStr, data.drawId, data.dac_biet, data.nhat, data.nhi, data.ba);
+                        newResults.push({ game: game.name, drawId: data.drawId, date: data.dateStr });
                         await sendTelegramNotification(`🎉 <b>Đã có kết quả ${game.name} mới!</b>\nKỳ quay: #${data.drawId} ngày ${data.dateStr}`);
                     }
                     console.log(`- Đã lưu kỳ #${data.drawId} (${data.dateStr}) thành công.`);
@@ -122,10 +121,20 @@ async function updateLatestDraw() {
                 console.error(`Error processing ${game.name}:`, e.message);
             }
         }
+
+        return newResults;
     } catch (e) {
         console.error("Lỗi khi tải trang XSKT:", e.message);
+        return [];
     }
-    console.log(`Hoàn tất!\n`);
 }
 
-updateLatestDraw();
+// Export cho cron.js import
+module.exports = { updateLatestDraw, sendTelegramNotification };
+
+// Chạy trực tiếp nếu gọi bằng `node update-today.js`
+if (require.main === module) {
+    updateLatestDraw().then(() => {
+        console.log('Hoàn tất!\n');
+    });
+}

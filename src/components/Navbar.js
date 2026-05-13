@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
-import { Menu, X, Sun, Moon, Home, Search, BrainCircuit, Wallet, BookOpen, TrendingUp, FlaskConical } from 'lucide-react';
+import { Menu, X, Sun, Moon, Home, Search, BrainCircuit, Wallet, BookOpen, TrendingUp, FlaskConical, BarChart2 } from 'lucide-react';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -17,6 +17,7 @@ export default function Navbar() {
   const navLinks = [
     { name: 'Trang Chủ', path: '/', icon: <Home size={18} /> },
     { name: 'Tìm Số Đẹp', path: '/du-doan', icon: <BrainCircuit size={18} />, color: '#eab308' },
+    { name: 'Thống Kê', path: '/thong-ke', icon: <BarChart2 size={18} />, color: '#3b82f6' },
     { name: 'Khoa Học Số', path: '/khoa-hoc', icon: <FlaskConical size={18} />, color: '#a855f7' },
     { name: 'Dò Số', path: '/tra-cuu', icon: <Search size={18} /> },
     { name: 'Mẹo Chọn Số', path: '/quy-luat', icon: <TrendingUp size={18} /> },

@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { generatePrediction, fetchHistory, clearHistory as clearHistoryAction } from './actions';
 import { getGameNames } from '@/lib/games';
-import { Sparkles, Target, Layers, BarChart3, RefreshCcw, History, Trash2, Clock } from 'lucide-react';
+import { Sparkles, Target, Layers, BarChart3, RefreshCcw, History, Trash2, Clock, Zap, Database, FlaskConical } from 'lucide-react';
 
 const GAME_NAMES = getGameNames();
 const GAME_KEYS = ['645', '655', '535', 'max3dpro'];
@@ -14,6 +14,7 @@ export default function PredictionPage() {
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [useAllDraws, setUseAllDraws] = useState(false);
 
   const loadHistory = useCallback(async () => {
     const h = await fetchHistory(game);
@@ -22,11 +23,11 @@ export default function PredictionPage() {
 
   const generate = useCallback(async () => {
     setLoading(true);
-    const result = await generatePrediction(game);
+    const result = await generatePrediction(game, useAllDraws);
     setPrediction(result);
     if (result) await loadHistory();
     setLoading(false);
-  }, [game, loadHistory]);
+  }, [game, loadHistory, useAllDraws]);
 
   useEffect(() => {
     loadHistory();
@@ -73,6 +74,35 @@ export default function PredictionPage() {
         </div>
       ) : (
         <div className="prediction-content">
+
+          {/* DATA SOURCE TOGGLE */}
+          <div className="glass-panel data-source-panel">
+            <div className="data-source-toggle">
+              <button 
+                onClick={() => setUseAllDraws(false)} 
+                className={`data-source-btn${!useAllDraws ? ' active' : ''}`}
+              >
+                <Clock size={16} />
+                <span>200 kỳ gần nhất</span>
+              </button>
+              <button 
+                onClick={() => setUseAllDraws(true)} 
+                className={`data-source-btn${useAllDraws ? ' active' : ''}`}
+              >
+                <Database size={16} />
+                <span>Tất cả các kỳ</span>
+              </button>
+            </div>
+            {prediction && (
+              <div className="data-source-info">
+                <Zap size={14} />
+                <span>
+                  Đang phân tích <strong>{prediction.drawsAnalyzed}</strong> kỳ quay | 
+                  Ensemble: {prediction.candidatesFound} ứng viên từ {prediction.attempts} lượt thử
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* MAIN PREDICTION */}
           <div className="glass-panel glass-panel--relative text-center">
@@ -122,6 +152,80 @@ export default function PredictionPage() {
               </>
             ) : null}
           </div>
+
+          {/* ENSEMBLE STRATEGY RESULTS */}
+          {prediction?.strategyResults?.length > 0 && (
+            <div className="glass-panel">
+              <h3 className="section-header">
+                <Zap size={18} color="#eab308" /> Kết quả Ensemble (3 chiến lược)
+              </h3>
+              <div className="strategy-leaderboard">
+                {prediction.strategyResults.map((s, idx) => (
+                  <div key={idx} className={`strategy-row${idx === 0 ? ' strategy-row-winner' : ''}`}>
+                    <span className="strategy-rank">#{idx + 1}</span>
+                    <div className="strategy-info">
+                      <div className="strategy-name">{s.name}</div>
+                      <div className="strategy-desc">{s.desc}</div>
+                    </div>
+                    <div className="strategy-metrics">
+                      <div className="strategy-metric">
+                        <span className="strategy-metric-value" style={{ color: '#3b82f6' }}>{s.candidates}</span>
+                        <span className="strategy-metric-label">Ứng viên</span>
+                      </div>
+                      <div className="strategy-metric">
+                        <span className="strategy-metric-value" style={{ color: '#10b981' }}>{Math.round(s.bestScore)}</span>
+                        <span className="strategy-metric-label">Điểm cao</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* BACKTEST RESULTS */}
+          {prediction?.backtestResult && (
+            <div className="glass-panel">
+              <h3 className="section-header">
+                <FlaskConical size={18} color="#a855f7" /> Backtest — Kiểm chứng thực tế
+              </h3>
+              <p className="text-muted text-sm mb-sm">
+                Đã thử chiến lược trên {prediction.backtestResult.tested} kỳ quay gần nhất
+              </p>
+              <div className="backtest-grid">
+                <div className="backtest-card">
+                  <div className="backtest-value" style={{ color: '#3b82f6' }}>
+                    {prediction.backtestResult.avgMatch}
+                  </div>
+                  <div className="backtest-label">TB số trúng / kỳ</div>
+                </div>
+                {prediction.backtestResult.match3Rate !== undefined && (
+                  <div className="backtest-card">
+                    <div className="backtest-value" style={{ color: '#10b981' }}>
+                      {prediction.backtestResult.match3Rate}%
+                    </div>
+                    <div className="backtest-label">Tỷ lệ ≥3 số</div>
+                  </div>
+                )}
+                {prediction.backtestResult.match4Rate !== undefined && (
+                  <div className="backtest-card">
+                    <div className="backtest-value" style={{ color: '#f59e0b' }}>
+                      {prediction.backtestResult.match4Rate}%
+                    </div>
+                    <div className="backtest-label">Tỷ lệ ≥4 số</div>
+                  </div>
+                )}
+                {prediction.backtestResult.match5Rate !== undefined && (
+                  <div className="backtest-card">
+                    <div className="backtest-value" style={{ color: '#ef4444' }}>
+                      {prediction.backtestResult.match5Rate}%
+                    </div>
+                    <div className="backtest-label">Tỷ lệ ≥5 số</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* TOP SCORED */}
           {prediction?.topScored?.length > 0 && (
@@ -216,8 +320,8 @@ export default function PredictionPage() {
                 { color: '#10b981', title: 'Đi chung một cặp', desc: 'Tìm các số hay rủ nhau ra cùng lúc trong các kỳ trước.' },
                 { color: '#ef4444', title: 'Con số ngủ đông', desc: 'Cố tình chọn số đã lâu lắm không thấy để đón đầu.' },
                 { color: '#a855f7', title: 'Dải số đồng đều', desc: 'Không chọn tụm lại một chỗ, rải đều các đầu số từ nhỏ đến lớn.' },
-                { color: '#f59e0b', title: 'Yếu tố tâm linh', desc: 'Thêm một chút xíu ngẫu nhiên may mắn.' },
-                { color: '#06b6d4', title: 'Chốt số xịn nhất', desc: 'Tạo hàng trăm bộ và chọn ra bộ có điểm số phân tích cao nhất.' },
+                { color: '#f59e0b', title: 'Ensemble AI', desc: 'Chạy 3 chiến lược (nóng, cân bằng, lạnh) rồi chọn bộ tốt nhất.' },
+                { color: '#06b6d4', title: 'Kiểm chứng ngược', desc: 'Backtest trên 100 kỳ gần nhất để đánh giá hiệu quả thuật toán.' },
               ].map((item, idx) => (
                 <div key={idx} className="algo-card" style={{ borderLeftColor: item.color }}>
                   <div className="algo-card__title" style={{ color: item.color }}>{item.title}</div>

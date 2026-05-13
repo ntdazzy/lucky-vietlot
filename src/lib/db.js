@@ -436,3 +436,112 @@ export function deletePredictionById(id) {
         return false;
     }
 }
+
+export function getSumDistribution(game) {
+    const table = validateGame(game);
+    const gameConfig = getGame(game);
+    if (!gameConfig.ballCount) return [];
+
+    try {
+        const allDraws = getDb().prepare(`SELECT balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
+        const sums = [];
+        for (const draw of allDraws) {
+            if (!draw.balls) continue;
+            const balls = draw.balls.split(',').map(b => parseInt(b.trim(), 10));
+            sums.push(balls.reduce((a, b) => a + b, 0));
+        }
+        if (sums.length === 0) return [];
+
+        // Build histogram with buckets of 10
+        const min = Math.floor(Math.min(...sums) / 10) * 10;
+        const max = Math.ceil(Math.max(...sums) / 10) * 10;
+        const buckets = {};
+        for (let b = min; b <= max; b += 10) {
+            buckets[`${b}-${b + 9}`] = 0;
+        }
+        for (const s of sums) {
+            const bk = Math.floor(s / 10) * 10;
+            const key = `${bk}-${bk + 9}`;
+            if (buckets[key] !== undefined) buckets[key]++;
+        }
+        return Object.entries(buckets).map(([range, count]) => ({ range, count }));
+    } catch (e) {
+        return [];
+    }
+}
+
+export function getTrendData(game, windowSize = 50) {
+    const table = validateGame(game);
+    const gameConfig = getGame(game);
+    if (!gameConfig.ballCount) return [];
+
+    try {
+        const allDraws = getDb().prepare(`SELECT draw_id, date, balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
+        if (allDraws.length < windowSize) return [];
+
+        // For each window, calculate average sum, even ratio, and top 3 hot numbers
+        const results = [];
+        for (let i = windowSize; i <= allDraws.length; i += Math.max(1, Math.floor(windowSize / 5))) {
+            const window = allDraws.slice(i - windowSize, i);
+            const freq = {};
+            let totalSum = 0;
+            let totalEvens = 0;
+            let drawCount = 0;
+
+            for (const draw of window) {
+                if (!draw.balls) continue;
+                const balls = draw.balls.split(',').map(b => parseInt(b.trim(), 10));
+                totalSum += balls.reduce((a, b) => a + b, 0);
+                totalEvens += balls.filter(n => n % 2 === 0).length;
+                drawCount++;
+                for (const b of balls) {
+                    const key = b.toString().padStart(2, '0');
+                    freq[key] = (freq[key] || 0) + 1;
+                }
+            }
+
+            if (drawCount === 0) continue;
+
+            const sortedFreq = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+            results.push({
+                drawId: allDraws[i - 1].draw_id,
+                date: allDraws[i - 1].date,
+                avgSum: Math.round(totalSum / drawCount),
+                evenRatio: Math.round((totalEvens / (drawCount * gameConfig.ballCount)) * 100),
+                hot1: sortedFreq[0]?.[0] || '',
+                hot2: sortedFreq[1]?.[0] || '',
+                hot3: sortedFreq[2]?.[0] || '',
+            });
+        }
+        return results;
+    } catch (e) {
+        return [];
+    }
+}
+
+export function getEvenOddDistribution(game) {
+    const table = validateGame(game);
+    const gameConfig = getGame(game);
+    if (!gameConfig.ballCount) return [];
+
+    try {
+        const allDraws = getDb().prepare(`SELECT balls FROM ${table}`).all();
+        const ballCount = gameConfig.ballCount;
+        const dist = {};
+
+        for (const draw of allDraws) {
+            if (!draw.balls) continue;
+            const balls = draw.balls.split(',').map(b => parseInt(b.trim(), 10));
+            const evens = balls.filter(n => n % 2 === 0).length;
+            const key = `${evens}C/${ballCount - evens}L`;
+            dist[key] = (dist[key] || 0) + 1;
+        }
+
+        const total = Object.values(dist).reduce((s, v) => s + v, 0);
+        return Object.entries(dist)
+            .map(([name, value]) => ({ name, value, pct: Math.round((value / total) * 1000) / 10 }))
+            .sort((a, b) => b.value - a.value);
+    } catch (e) {
+        return [];
+    }
+}
