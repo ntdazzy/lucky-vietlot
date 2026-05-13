@@ -57,6 +57,18 @@ export async function GET(request) {
         const db = getDbWritable();
         try {
             let progressText = `⚡ <b>Bắt đầu đồng bộ hóa TOÀN BỘ dữ liệu...</b>\n`;
+            progressText += `\n🧹 <i>Đang dọn dẹp dữ liệu cũ...</i>`;
+            await editTelegramMessage(chatId, messageId, progressText);
+
+            // Xoá SẠCH data của toàn bộ 4 game để đảm bảo không bị lặp/lỗi
+            db.prepare('DELETE FROM draws_645').run();
+            db.prepare('DELETE FROM draws_655').run();
+            db.prepare('DELETE FROM draws_535').run();
+            db.prepare('DELETE FROM draws_max3dpro').run();
+            db.prepare('VACUUM').run();
+
+            progressText = `⚡ <b>Bắt đầu đồng bộ hóa TOÀN BỘ dữ liệu...</b>\n`;
+            progressText += `\n✅ Đã dọn dẹp xong. Bắt đầu tải mới...`;
             await editTelegramMessage(chatId, messageId, progressText);
 
             const configs = [
@@ -71,12 +83,6 @@ export async function GET(request) {
 
                 progressText += `\n📦 <b>Đang đồng bộ ${cfg.name}...</b>`;
                 await editTelegramMessage(chatId, messageId, progressText);
-
-                // Xoá data cũ trước khi sync all
-                const tableMap = { 'mega': 'draws_645', 'power': 'draws_655', 'lotto535': 'draws_535', 'max3d': 'draws_max3dpro' };
-                if (tableMap[cfg.type]) {
-                    db.prepare(`DELETE FROM ${tableMap[cfg.type]}`).run();
-                }
 
                 let insertedCount = 0;
                 let targetDrawId = 0;
