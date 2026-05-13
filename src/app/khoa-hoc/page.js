@@ -13,6 +13,7 @@ export default function ScienceLabPage() {
   const [generated, setGenerated] = useState(null);
   const [isPending, startTransition] = useTransition();
   const [useAllDraws, setUseAllDraws] = useState(false);
+  const [bao, setBao] = useState('standard');
   const gameNames = getGameNames();
 
   const runBacktest = () => {
@@ -26,7 +27,7 @@ export default function ScienceLabPage() {
 
   const generateFromWinner = async () => {
     if (!data?.winner) return;
-    const res = await generateWithWinner(game, data.winner.id, useAllDraws);
+    const res = await generateWithWinner(game, data.winner.id, useAllDraws, bao);
     setGenerated(res);
   };
 
@@ -96,6 +97,35 @@ export default function ScienceLabPage() {
               >
                 <span>Tất cả các kỳ</span>
               </button>
+            </div>
+          </div>
+
+          <div className="lab-control-group">
+            <label className="lab-label">Chế độ tạo số (Bao)</label>
+            <div className="custom-select-wrapper" style={{ margin: 0, padding: '8px 12px' }}>
+              <select 
+                value={bao} 
+                onChange={(e) => setBao(e.target.value)}
+                className="custom-select"
+                disabled={isPending}
+              >
+                <option value="standard">Tiêu chuẩn</option>
+                {(game === '645' || game === '655') && (
+                  <>
+                    <option value="5">Bao 5</option>
+                    {[7, 8, 9, 10, 11, 12, 13, 14, 15, 18].map(b => (
+                      <option key={b} value={b}>Bao {b}</option>
+                    ))}
+                  </>
+                )}
+                {game === '535' && (
+                  <>
+                    {[6, 7, 8, 9, 10].map(b => (
+                      <option key={b} value={b}>Bao {b}</option>
+                    ))}
+                  </>
+                )}
+              </select>
             </div>
           </div>
 

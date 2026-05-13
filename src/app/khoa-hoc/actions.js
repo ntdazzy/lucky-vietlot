@@ -6,8 +6,9 @@ import { getGame } from '@/lib/games';
 // STRATEGY DEFINITIONS — Each strategy returns N predicted ball numbers
 // ============================================================================
 
-function strategyPureHot(trainData, game) {
+function strategyPureHot(trainData, game, ballCount) {
   const cfg = getGame(game);
+  const count = ballCount || cfg.ballCount;
   const freq = {};
   for (const d of trainData) {
     if (!d.balls) continue;
@@ -17,12 +18,13 @@ function strategyPureHot(trainData, game) {
   }
   return Object.entries(freq)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, cfg.ballCount)
+    .slice(0, count)
     .map(([n]) => n);
 }
 
-function strategyPureCold(trainData, game) {
+function strategyPureCold(trainData, game, ballCount) {
   const cfg = getGame(game);
+  const count = ballCount || cfg.ballCount;
   const lastSeen = {};
   for (let i = 1; i <= cfg.maxBall; i++) {
     lastSeen[i.toString().padStart(2, '0')] = -1;
@@ -35,12 +37,13 @@ function strategyPureCold(trainData, game) {
   });
   return Object.entries(lastSeen)
     .sort((a, b) => a[1] - b[1])
-    .slice(0, cfg.ballCount)
+    .slice(0, count)
     .map(([n]) => n);
 }
 
-function strategyRecencyDecay(trainData, game) {
+function strategyRecencyDecay(trainData, game, ballCount) {
   const cfg = getGame(game);
+  const count = ballCount || cfg.ballCount;
   const DECAY = 0.997;
   const total = trainData.length;
   const scores = {};
@@ -53,13 +56,14 @@ function strategyRecencyDecay(trainData, game) {
   }
   return Object.entries(scores)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, cfg.ballCount)
+    .slice(0, count)
     .map(([n]) => n);
 }
 
-function strategyMarkov(trainData, game) {
+function strategyMarkov(trainData, game, ballCount) {
   const cfg = getGame(game);
-  if (trainData.length < 5) return strategyPureHot(trainData, game);
+  const count = ballCount || cfg.ballCount;
+  if (trainData.length < 5) return strategyPureHot(trainData, game, count);
   const lastBalls = trainData[trainData.length - 1].balls?.split(',').map(b => b.trim()) || [];
   const transitions = {};
   for (let i = 1; i < trainData.length; i++) {
@@ -75,30 +79,32 @@ function strategyMarkov(trainData, game) {
   }
   return Object.entries(transitions)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, cfg.ballCount)
+    .slice(0, count)
     .map(([n]) => n);
 }
 
-function strategyHotColdMix(trainData, game) {
+function strategyHotColdMix(trainData, game, ballCount) {
   const cfg = getGame(game);
-  const hot = strategyPureHot(trainData, game);
-  const cold = strategyPureCold(trainData, game);
+  const count = ballCount || cfg.ballCount;
+  const hot = strategyPureHot(trainData, game, count);
+  const cold = strategyPureCold(trainData, game, count);
   const selected = new Set();
-  const hotCount = Math.ceil(cfg.ballCount / 2);
-  const coldCount = Math.floor(cfg.ballCount / 2);
+  const hotCount = Math.ceil(count / 2);
+  const coldCount = Math.floor(count / 2);
   for (const h of hot) {
     if (selected.size >= hotCount) break;
     selected.add(h);
   }
   for (const c of cold) {
-    if (selected.size >= cfg.ballCount) break;
+    if (selected.size >= count) break;
     selected.add(c);
   }
-  return Array.from(selected).slice(0, cfg.ballCount);
+  return Array.from(selected).slice(0, count);
 }
 
-function strategyGapBased(trainData, game) {
+function strategyGapBased(trainData, game, ballCount) {
   const cfg = getGame(game);
+  const count = ballCount || cfg.ballCount;
   const lastSeen = {};
   for (let i = 1; i <= cfg.maxBall; i++) {
     lastSeen[i.toString().padStart(2, '0')] = -1;
@@ -117,15 +123,16 @@ function strategyGapBased(trainData, game) {
   }
   return Object.entries(scores)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, cfg.ballCount)
+    .slice(0, count)
     .map(([n]) => n);
 }
 
-function strategyEnsembleV4(trainData, game) {
+function strategyEnsembleV4(trainData, game, ballCount) {
   const cfg = getGame(game);
-  const hot = strategyRecencyDecay(trainData, game);
-  const cold = strategyGapBased(trainData, game);
-  const markov = strategyMarkov(trainData, game);
+  const count = ballCount || cfg.ballCount;
+  const hot = strategyRecencyDecay(trainData, game, count);
+  const cold = strategyGapBased(trainData, game, count);
+  const markov = strategyMarkov(trainData, game, count);
 
   // Weighted vote
   const votes = {};
@@ -135,14 +142,15 @@ function strategyEnsembleV4(trainData, game) {
 
   return Object.entries(votes)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, cfg.ballCount)
+    .slice(0, count)
     .map(([n]) => n);
 }
 
-function strategyRandom(trainData, game) {
+function strategyRandom(trainData, game, ballCount) {
   const cfg = getGame(game);
+  const count = ballCount || cfg.ballCount;
   const picked = new Set();
-  while (picked.size < cfg.ballCount) {
+  while (picked.size < count) {
     const n = Math.floor(Math.random() * cfg.maxBall) + 1;
     picked.add(n.toString().padStart(2, '0'));
   }
@@ -250,9 +258,9 @@ export async function runFullBacktest(game, testWindow = 100, useAllDraws = fals
   };
 }
 
-export async function generateWithWinner(game, strategyId, useAllDraws = false) {
+export async function generateWithWinner(game, strategyId, useAllDraws = false, bao = 'standard') {
   const gameConfig = getGame(game);
-  if (!gameConfig || !gameConfig.ballCount) return null;
+  if (!gameConfig) return null;
 
   const strategy = STRATEGIES.find(s => s.id === strategyId);
   if (!strategy) return null;
@@ -263,7 +271,12 @@ export async function generateWithWinner(game, strategyId, useAllDraws = false) 
 
   if (allDraws.length === 0) return null;
 
-  const predicted = strategy.fn(allDraws, game);
+  let ballCount = gameConfig.ballCount;
+  if (bao && bao !== 'standard') {
+    ballCount = parseInt(bao);
+  }
+
+  const predicted = strategy.fn(allDraws, game, ballCount);
   return {
     main: predicted.sort((a, b) => parseInt(a) - parseInt(b)),
     strategy: { id: strategy.id, name: strategy.name, emoji: strategy.emoji },
