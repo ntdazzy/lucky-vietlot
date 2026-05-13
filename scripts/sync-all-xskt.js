@@ -28,7 +28,9 @@ function parseDateFromHref($el) {
 async function syncGame(gameCode, type = 'mega') {
     console.log(`\n=== Đồng bộ ${gameCode.toUpperCase()} ===`);
     let page = 1;
-    const maxPages = type === 'lotto535' ? 100 : 300; 
+    const maxPages = 1000; // Đủ để phủ từ 2016 đến nay
+    let targetDrawId = 0;
+    let processedCount = 0;
     
     let tableName, stmt;
     if (type === 'mega') {
@@ -48,18 +50,22 @@ async function syncGame(gameCode, type = 'mega') {
     const gameUrl = type === 'mega' ? 'xsmega645' : type === 'power' ? 'xspower' : type === 'lotto535' ? 'xslotto-5-35' : 'xsmax3dpro';
 
     while (page <= maxPages) {
-        process.stdout.write(`Đang tải trang ${page}...\r`);
         try {
             const res = await axios.get(`https://xskt.com.vn/${gameUrl}/trang-${page}`, { headers, timeout: 15000 });
             const $ = cheerio.load(res.data);
             const tables = type === 'max3d' ? $('table.max3d') : $('table.result');
             
             if (tables.length === 0) {
-                console.log(`- Không còn dữ liệu ở trang ${page}. Dừng.`);
+                console.log(`\n- Đã tới trang cuối cùng (${page-1}). Hoàn tất.`);
                 break;
             }
 
-            let foundInPage = 0;
+            // Lấy Target Draw ID từ trang 1 để tính tiến độ
+            if (page === 1 && tables.length > 0) {
+                const latestId = $(tables[0]).find('a[href*="/ngay-"] b').text().replace('#', '').trim();
+                targetDrawId = parseInt(latestId) || 0;
+            }
+
             tables.each((i, el) => {
                 const drawIdText = $(el).find('a[href*="/ngay-"] b').text().replace('#', '').trim();
                 if (!drawIdText) return;
@@ -78,7 +84,6 @@ async function syncGame(gameCode, type = 'mega') {
                 } else if (type === 'lotto535') {
                     const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
                     if (balls) {
-                        // Lotto 5/35 has 2 draws per day, so we use date+drawId as primary key id
                         const id = `${dateStr.replace(/\//g, '')}_${drawIdText.replace(/\s+/g, '')}`;
                         result = stmt.run(id, dateStr, drawIdText, balls);
                     }
@@ -89,22 +94,25 @@ async function syncGame(gameCode, type = 'mega') {
 
                 if (result && result.changes > 0) {
                     totalInserted[type]++;
-                    foundInPage++;
+                }
+                
+                const currentId = parseInt(drawIdText) || 0;
+                if (targetDrawId > 0 && currentId > 0) {
+                    const progress = Math.min(100, Math.round(((targetDrawId - currentId + 1) / targetDrawId) * 100));
+                    process.stdout.write(`  Tiến độ: ${targetDrawId - currentId + 1}/${targetDrawId} kì (${progress}%)   \r`);
+                } else {
+                    process.stdout.write(`  Đang xử lý kì #${drawIdText}...   \r`);
                 }
             });
 
-            if (foundInPage === 0 && page > 20) {
-                // Thường thì đã sync hết nếu không có trang mới nào có kết quả mới
-                console.log(`\n- Đã bắt kịp dữ liệu cũ ở trang ${page}.`);
-                break;
-            }
-
             page++;
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 200));
             
         } catch (e) {
             console.error(`\nLỗi trang ${page}:`, e.message);
-            break;
+            // Thử lại trang đó hoặc skip nếu lỗi nặng
+            if (e.response && e.response.status === 404) break;
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
     }
 }

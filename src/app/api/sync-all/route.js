@@ -62,25 +62,21 @@ export async function GET(request) {
                     name: 'Mega 6/45', 
                     path: 'xsmega645',
                     type: 'mega',
-                    maxPages: 50, // Đồng bộ 50 trang (~250 kỳ) cho nhanh, có thể tăng nếu cần
                 },
                 { 
                     name: 'Power 6/55', 
                     path: 'xspower',
                     type: 'power',
-                    maxPages: 50,
                 },
                 { 
                     name: 'Lotto 5/35', 
                     path: 'xslotto-5-35',
                     type: 'lotto535',
-                    maxPages: 50,
                 },
                 { 
                     name: 'Max 3D Pro', 
                     path: 'xsmax3dpro',
                     type: 'max3d',
-                    maxPages: 50,
                 }
             ];
 
@@ -89,9 +85,9 @@ export async function GET(request) {
                 await editTelegramMessage(chatId, messageId, progressText);
 
                 let insertedCount = 0;
-                let totalChecked = 0;
+                let targetDrawId = 0;
 
-                for (let page = 1; page <= cfg.maxPages; page++) {
+                for (let page = 1; page <= 500; page++) {
                     try {
                         const url = `https://xskt.com.vn/${cfg.path}/trang-${page}`;
                         const res = await axios.get(url, { headers: XSKT_HEADERS, timeout: 20000 });
@@ -100,7 +96,12 @@ export async function GET(request) {
                         
                         if (tables.length === 0) break;
 
-                        let foundInPage = 0;
+                        if (page === 1 && tables.length > 0) {
+                            const latestId = $(tables[0]).find('a[href*="/ngay-"] b').text().replace('#', '').trim();
+                            targetDrawId = parseInt(latestId) || 0;
+                        }
+
+                        let lastProcessedId = 0;
                         tables.each((i, el) => {
                             const drawIdText = $(el).find('a[href*="/ngay-"] b').text().replace('#', '').trim();
                             if (!drawIdText) return;
@@ -133,25 +134,27 @@ export async function GET(request) {
 
                             if (result && result.changes > 0) {
                                 insertedCount++;
-                                foundInPage++;
                             }
-                            totalChecked++;
+                            lastProcessedId = parseInt(drawIdText) || 0;
                         });
 
-                        // Cập nhật tiến độ sau mỗi 5 trang
+                        // Cập nhật tiến độ mỗi 5 trang
                         if (page % 5 === 0) {
-                            await editTelegramMessage(chatId, messageId, progressText + ` (Trang ${page}, +${insertedCount})`);
-                        }
-
-                        if (foundInPage === 0 && page > 3) {
-                            // Nếu không có gì mới sau vài trang, có thể là đã bắt kịp dữ liệu cũ
-                            // Tuy nhiên để an toàn trong "Sync All", ta cứ chạy tiếp hoặc dừng nếu muốn.
+                            let progMsg = progressText;
+                            if (targetDrawId > 0 && lastProcessedId > 0) {
+                                const count = targetDrawId - lastProcessedId + 1;
+                                progMsg += ` (${count}/${targetDrawId} kì)`;
+                            } else {
+                                progMsg += ` (Trang ${page})`;
+                            }
+                            await editTelegramMessage(chatId, messageId, progMsg);
                         }
                         
-                        await new Promise(r => setTimeout(r, 300));
+                        await new Promise(r => setTimeout(r, 200));
                     } catch (e) {
                         console.error(`Error page ${page}:`, e.message);
-                        break;
+                        if (e.response && e.response.status === 404) break;
+                        await new Promise(r => setTimeout(r, 2000));
                     }
                 }
 
