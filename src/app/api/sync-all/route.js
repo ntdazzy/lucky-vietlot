@@ -98,7 +98,9 @@ export async function GET(request) {
 
                         let lastProcessedId = 0;
                         tables.each((i, el) => {
-                            const drawIdText = $(el).find('a[href*="/ngay-"] b').text().replace('#', '').trim();
+                            // Cố gắng lấy Draw ID linh hoạt hơn (có thể trong <b> hoặc trực tiếp trong <a>)
+                            let rawId = $(el).find('a[href*="/ngay-"]').text().trim();
+                            const drawIdText = rawId.replace('#', '').trim();
                             if (!drawIdText) return;
                             
                             const dateStr = parseDateFromHref($, el);
@@ -130,14 +132,19 @@ export async function GET(request) {
                             if (result && result.changes > 0) {
                                 insertedCount++;
                             }
-                            lastProcessedId = parseInt(drawIdText) || 0;
+                            // Lấy ID số để tính tiến độ (ví dụ 01508 -> 1508)
+                            const idNum = parseInt(drawIdText.match(/\d+/)?.[0] || '0');
+                            if (idNum > 0) {
+                                if (targetDrawId === 0) targetDrawId = idNum; // Giả định kỳ đầu tiên là lớn nhất
+                                lastProcessedId = idNum;
+                            }
                         });
 
-                        // Cập nhật tiến độ mỗi trang cho mượt
+                        // Cập nhật tiến độ mỗi trang
                         let progMsg = progressText;
                         if (targetDrawId > 0 && lastProcessedId > 0) {
-                            const count = targetDrawId - lastProcessedId + 1;
-                            progMsg += ` ⏳ (Kỳ ${count}/${targetDrawId})`;
+                            const currentKì = targetDrawId - lastProcessedId + 1;
+                            progMsg += ` ⏳ (${currentKì}/${targetDrawId} kì)`;
                         } else {
                             progMsg += ` ⏳ (Đang xử lý trang ${page}...)`;
                         }
