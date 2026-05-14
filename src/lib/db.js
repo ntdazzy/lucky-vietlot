@@ -1,68 +1,162 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { isValidGame, getGame, VALID_GAMES } from './games.js';
+import { isValidGame, getGame } from './games.js';
 
-let db;
-let dbWrite;
+// ============================================================================
+// CONNECTION MANAGEMENT
+// ----------------------------------------------------------------------------
+// Strategy: ONE shared write-capable connection (WAL mode) for the whole
+// Node process. Readonly endpoints reuse the same connection — better-sqlite3
+// is synchronous and thread-safe within a single process. No more split
+// readonly/write connections, which caused VACUUM lock failures.
+// ============================================================================
+
+let _db = null;
+let _initialized = false;
 
 function getDbPath() {
     if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
         const volumeDbPath = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'vietlott.db');
         const localDbPath = path.join(process.cwd(), 'vietlott.db');
+        // Bootstrap: copy bundled DB to persistent volume on first boot
         if (!fs.existsSync(volumeDbPath) && fs.existsSync(localDbPath)) {
-            fs.copyFileSync(localDbPath, volumeDbPath);
+            try {
+                fs.copyFileSync(localDbPath, volumeDbPath);
+                console.log('[db] Bootstrapped DB to volume');
+            } catch (e) {
+                console.error('[db] Bootstrap copy failed:', e.message);
+            }
         }
         return volumeDbPath;
     }
     return path.join(process.cwd(), 'vietlott.db');
 }
 
+function ensureSchema(db) {
+    // Idempotent. All tables use the same shape: integer PK + UNIQUE draw_id.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS draws_645 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            draw_id TEXT UNIQUE,
+            balls TEXT
+        );
+        CREATE TABLE IF NOT EXISTS draws_655 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            draw_id TEXT UNIQUE,
+            balls TEXT,
+            special_ball TEXT
+        );
+        CREATE TABLE IF NOT EXISTS draws_535 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            draw_id TEXT UNIQUE,
+            balls TEXT
+        );
+        CREATE TABLE IF NOT EXISTS draws_max3dpro (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            draw_id TEXT UNIQUE,
+            dac_biet TEXT,
+            nhat TEXT,
+            nhi TEXT,
+            ba TEXT
+        );
+        CREATE TABLE IF NOT EXISTS prediction_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            game TEXT NOT NULL,
+            main TEXT NOT NULL,
+            special TEXT,
+            breakdown_sum INTEGER,
+            breakdown_evens INTEGER,
+            breakdown_spread INTEGER,
+            breakdown_decades INTEGER,
+            confidence REAL,
+            attempts INTEGER,
+            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_645_draw_id ON draws_645(draw_id);
+        CREATE INDEX IF NOT EXISTS idx_655_draw_id ON draws_655(draw_id);
+        CREATE INDEX IF NOT EXISTS idx_535_draw_id ON draws_535(draw_id);
+        CREATE INDEX IF NOT EXISTS idx_max3dpro_draw_id ON draws_max3dpro(draw_id);
+        CREATE INDEX IF NOT EXISTS idx_history_game ON prediction_history(game, id DESC);
+    `);
+}
+
+function openConnection() {
+    const dbPath = getDbPath();
+    // Always open read-write so we can create tables on fresh deploy.
+    // fileMustExist: false allows creating new DB file if missing.
+    const db = new Database(dbPath, { fileMustExist: false });
+
+    // WAL mode = concurrent reads while writing, better throughput
+    db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');     // Faster, still safe under WAL
+    db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000');      // Auto-retry on lock for 5s
+
+    ensureSchema(db);
+    return db;
+}
+
+function getConnection() {
+    if (!_db || !_db.open) {
+        _db = openConnection();
+        _initialized = true;
+        console.log('[db] Connection opened:', getDbPath());
+    }
+    return _db;
+}
+
+// Public accessors — kept for backward-compat with callers
+export function getDb() { return getConnection(); }
+export function getDbWritable() { return getConnection(); }
+
+// Close hook for graceful shutdown (Railway SIGTERM)
+export function closeDb() {
+    if (_db && _db.open) {
+        try { _db.close(); } catch (e) { console.error('[db] Close error:', e.message); }
+        _db = null;
+        _initialized = false;
+    }
+}
+
+if (typeof process !== 'undefined' && !process._dbHandlersRegistered) {
+    process._dbHandlersRegistered = true;
+    process.on('SIGTERM', closeDb);
+    process.on('SIGINT', closeDb);
+}
+
+// ============================================================================
+// QUERY HELPERS
+// ============================================================================
+
 function validateGame(game) {
     if (!isValidGame(game)) throw new Error(`Invalid game: ${game}`);
     return getGame(game).tableName;
 }
 
-export function getDb() {
-    if (!db) db = new Database(getDbPath(), { readonly: true });
-    return db;
-}
-
-export function getDbWritable() {
-    if (!dbWrite) {
-        dbWrite = new Database(getDbPath());
-        dbWrite.exec(`
-            CREATE TABLE IF NOT EXISTS prediction_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                game TEXT NOT NULL,
-                main TEXT NOT NULL,
-                special TEXT,
-                breakdown_sum INTEGER,
-                breakdown_evens INTEGER,
-                breakdown_spread INTEGER,
-                breakdown_decades INTEGER,
-                confidence REAL,
-                attempts INTEGER,
-                created_at TEXT DEFAULT (datetime('now', 'localtime'))
-            )
-        `);
+function safeQuery(fn, fallback) {
+    try { return fn(); } catch (e) {
+        console.error('[db] Query error:', e.message);
+        return fallback;
     }
-    return dbWrite;
 }
 
 export function getLatestDraws(game, limit = 10) {
     const table = validateGame(game);
-    try {
-        return getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC LIMIT ?`).all(limit);
-    } catch (e) {
-        return [];
-    }
+    return safeQuery(
+        () => getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC LIMIT ?`).all(limit),
+        []
+    );
 }
 
 export function getStats(game) {
     const table = validateGame(game);
-    try {
-        const allDraws = getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
+    return safeQuery(() => {
+        const allDraws = getDb().prepare(`SELECT balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
         const totalDraws = allDraws.length;
         if (totalDraws === 0) return [];
 
@@ -70,26 +164,26 @@ export function getStats(game) {
         const frequencies = {};
 
         for (let i = 0; i < totalDraws; i++) {
-            const draw = allDraws[i];
-            if (!draw.balls) continue;
+            const balls = allDraws[i].balls;
+            if (!balls) continue;
             const weight = Math.pow(DECAY, totalDraws - 1 - i);
-            draw.balls.split(',').map(b => b.trim()).forEach(p => {
+            const parts = balls.split(',');
+            for (let j = 0; j < parts.length; j++) {
+                const p = parts[j].trim();
                 if (!frequencies[p]) frequencies[p] = { number: p, count: 0, weightedScore: 0, lastSeen: -1 };
                 frequencies[p].count++;
                 frequencies[p].weightedScore += weight;
                 frequencies[p].lastSeen = i;
-            });
+            }
         }
 
         const result = Object.values(frequencies);
-        result.forEach(item => {
+        for (const item of result) {
             item.gap = totalDraws - 1 - item.lastSeen;
             item.weightedScore = Math.round(item.weightedScore * 1000) / 1000;
-        });
+        }
         return result.sort((a, b) => b.weightedScore - a.weightedScore);
-    } catch (e) {
-        return [];
-    }
+    }, []);
 }
 
 export function getAdvancedStats(game) {
@@ -97,8 +191,8 @@ export function getAdvancedStats(game) {
     const gameConfig = getGame(game);
     if (!gameConfig.ballCount) return null;
 
-    try {
-        const allDraws = getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
+    return safeQuery(() => {
+        const allDraws = getDb().prepare(`SELECT balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
         if (allDraws.length === 0) return null;
 
         const sums = [];
@@ -109,22 +203,23 @@ export function getAdvancedStats(game) {
             drawBalls.push(balls);
             sums.push(balls.reduce((a, b) => a + b, 0));
         }
+        if (sums.length === 0) return null;
 
         const sumMean = sums.reduce((a, b) => a + b, 0) / sums.length;
         const sumVariance = sums.reduce((a, b) => a + Math.pow(b - sumMean, 2), 0) / sums.length;
         const sumStd = Math.sqrt(sumVariance);
 
         const ballCount = gameConfig.ballCount;
-        let evenOddDist = {};
+        const evenOddDist = {};
         for (const balls of drawBalls) {
             const evens = balls.filter(n => n % 2 === 0).length;
             const key = `${evens}/${ballCount - evens}`;
             evenOddDist[key] = (evenOddDist[key] || 0) + 1;
         }
         const totalForDist = drawBalls.length;
-        Object.keys(evenOddDist).forEach(k => {
+        for (const k of Object.keys(evenOddDist)) {
             evenOddDist[k] = Math.round((evenOddDist[k] / totalForDist) * 1000) / 10;
-        });
+        }
 
         return {
             sumMin: Math.round(sumMean - sumStd),
@@ -135,15 +230,13 @@ export function getAdvancedStats(game) {
             totalDraws: allDraws.length,
             recentDrawBalls: drawBalls.slice(0, 5)
         };
-    } catch (e) {
-        return null;
-    }
+    }, null);
 }
 
 export function getSpecialBallStats(game) {
     if (game !== '655') return [];
-    try {
-        const allDraws = getDb().prepare(`SELECT * FROM draws_655 ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
+    return safeQuery(() => {
+        const allDraws = getDb().prepare(`SELECT special_ball FROM draws_655 ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
         const totalDraws = allDraws.length;
         if (totalDraws === 0) return [];
 
@@ -161,20 +254,18 @@ export function getSpecialBallStats(game) {
         }
 
         const result = Object.values(frequencies);
-        result.forEach(item => {
+        for (const item of result) {
             item.gap = totalDraws - 1 - item.lastSeen;
             item.weightedScore = Math.round(item.weightedScore * 1000) / 1000;
-        });
+        }
         return result.sort((a, b) => b.weightedScore - a.weightedScore);
-    } catch (e) {
-        return [];
-    }
+    }, []);
 }
 
 export function getTransitionMatrix(game, windowSize = 3) {
     const table = validateGame(game);
-    try {
-        const allDraws = getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
+    return safeQuery(() => {
+        const allDraws = getDb().prepare(`SELECT balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
         if (allDraws.length < 2) return {};
 
         const transitions = {};
@@ -203,9 +294,7 @@ export function getTransitionMatrix(game, windowSize = 3) {
             }
         }
         return normalized;
-    } catch (e) {
-        return {};
-    }
+    }, {});
 }
 
 export function getDecadeDistribution(game) {
@@ -213,8 +302,8 @@ export function getDecadeDistribution(game) {
     const gameConfig = getGame(game);
     if (!gameConfig.maxBall) return null;
 
-    try {
-        const allDraws = getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
+    return safeQuery(() => {
+        const allDraws = getDb().prepare(`SELECT balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
         if (allDraws.length === 0) return null;
 
         const maxBall = gameConfig.maxBall;
@@ -260,9 +349,7 @@ export function getDecadeDistribution(game) {
         }
 
         return { overall: result, recent: recentResult };
-    } catch (e) {
-        return null;
-    }
+    }, null);
 }
 
 export function getDeltaPatterns(game) {
@@ -270,8 +357,8 @@ export function getDeltaPatterns(game) {
     const gameConfig = getGame(game);
     if (!gameConfig.ballCount) return null;
 
-    try {
-        const allDraws = getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
+    return safeQuery(() => {
+        const allDraws = getDb().prepare(`SELECT balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
         if (allDraws.length === 0) return null;
 
         const deltas = [];
@@ -283,10 +370,13 @@ export function getDeltaPatterns(game) {
             deltas.push(d);
         }
 
+        if (deltas.length === 0) return null;
+
         const deltaCount = gameConfig.ballCount - 1;
         const avgDeltas = [];
         for (let pos = 0; pos < deltaCount; pos++) {
             const vals = deltas.map(d => d[pos]).filter(Boolean);
+            if (vals.length === 0) continue;
             const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
             const std = Math.sqrt(vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / vals.length);
             avgDeltas.push({ position: pos, mean: Math.round(mean * 10) / 10, std: Math.round(std * 10) / 10 });
@@ -303,15 +393,13 @@ export function getDeltaPatterns(game) {
             spreadMin: Math.round(spreadMean - spreadStd),
             spreadMax: Math.round(spreadMean + spreadStd)
         };
-    } catch (e) {
-        return null;
-    }
+    }, null);
 }
 
 export function findDuplicateSets(game, minOccurrences = 2) {
     const table = validateGame(game);
-    try {
-        const allDraws = getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
+    return safeQuery(() => {
+        const allDraws = getDb().prepare(`SELECT draw_id, date, balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
         const setMap = {};
         for (const draw of allDraws) {
             if (!draw.balls) continue;
@@ -323,14 +411,12 @@ export function findDuplicateSets(game, minOccurrences = 2) {
             .filter(([, v]) => v.length >= minOccurrences)
             .map(([balls, draws]) => ({ balls: balls.split(','), count: draws.length, draws }))
             .sort((a, b) => b.count - a.count);
-    } catch (e) {
-        return [];
-    }
+    }, []);
 }
 
 export function searchExactSet(game, numbers) {
     const table = validateGame(game);
-    try {
+    return safeQuery(() => {
         const sorted = numbers.map(n => n.toString().padStart(2, '0')).sort((a, b) => parseInt(a) - parseInt(b));
         const allDraws = getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) DESC`).all();
         const matches = [];
@@ -346,9 +432,7 @@ export function searchExactSet(game, numbers) {
             }
         }
         return matches.sort((a, b) => b.matchCount - a.matchCount || parseInt(b.draw_id) - parseInt(a.draw_id));
-    } catch (e) {
-        return [];
-    }
+    }, []);
 }
 
 export function backtestStrategy(game, strategyFn, testWindow = 100) {
@@ -356,8 +440,8 @@ export function backtestStrategy(game, strategyFn, testWindow = 100) {
     const gameConfig = getGame(game);
     if (!gameConfig.ballCount) return null;
 
-    try {
-        const allDraws = getDb().prepare(`SELECT * FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all().filter(d => d.balls);
+    return safeQuery(() => {
+        const allDraws = getDb().prepare(`SELECT balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all().filter(d => d.balls);
         if (allDraws.length < testWindow + 50) return null;
 
         const trainEnd = allDraws.length - testWindow;
@@ -380,16 +464,17 @@ export function backtestStrategy(game, strategyFn, testWindow = 100) {
             result[`match${m}Rate`] = Math.round((hits[`match${m}`] / testWindow) * 1000) / 10;
         }
         return result;
-    } catch (e) {
-        return null;
-    }
+    }, null);
 }
+
+// ============================================================================
+// PREDICTION HISTORY
+// ============================================================================
 
 export function savePredictionHistory(game, prediction) {
     if (!isValidGame(game)) return null;
     try {
-        const wdb = getDbWritable();
-        const info = wdb.prepare(`
+        const info = getDb().prepare(`
             INSERT INTO prediction_history (game, main, special, breakdown_sum, breakdown_evens, breakdown_spread, breakdown_decades, confidence, attempts)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -405,44 +490,50 @@ export function savePredictionHistory(game, prediction) {
         );
         return info.lastInsertRowid;
     } catch (e) {
+        console.error('[db] savePredictionHistory:', e.message);
         return null;
     }
 }
 
 export function getPredictionHistory(game, limit = 50) {
     if (!isValidGame(game)) return [];
-    try {
-        return getDbWritable().prepare(`SELECT * FROM prediction_history WHERE game = ? ORDER BY id DESC LIMIT ?`).all(game, limit);
-    } catch (e) {
-        return [];
-    }
+    return safeQuery(
+        () => getDb().prepare(`SELECT * FROM prediction_history WHERE game = ? ORDER BY id DESC LIMIT ?`).all(game, limit),
+        []
+    );
 }
 
 export function clearPredictionHistory(game) {
     if (!isValidGame(game)) return false;
     try {
-        getDbWritable().prepare(`DELETE FROM prediction_history WHERE game = ?`).run(game);
+        getDb().prepare(`DELETE FROM prediction_history WHERE game = ?`).run(game);
         return true;
     } catch (e) {
+        console.error('[db] clearPredictionHistory:', e.message);
         return false;
     }
 }
 
 export function deletePredictionById(id) {
     try {
-        getDbWritable().prepare(`DELETE FROM prediction_history WHERE id = ?`).run(id);
+        getDb().prepare(`DELETE FROM prediction_history WHERE id = ?`).run(id);
         return true;
     } catch (e) {
+        console.error('[db] deletePredictionById:', e.message);
         return false;
     }
 }
+
+// ============================================================================
+// CHART DATA
+// ============================================================================
 
 export function getSumDistribution(game) {
     const table = validateGame(game);
     const gameConfig = getGame(game);
     if (!gameConfig.ballCount) return [];
 
-    try {
+    return safeQuery(() => {
         const allDraws = getDb().prepare(`SELECT balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
         const sums = [];
         for (const draw of allDraws) {
@@ -452,7 +543,6 @@ export function getSumDistribution(game) {
         }
         if (sums.length === 0) return [];
 
-        // Build histogram with buckets of 10
         const min = Math.floor(Math.min(...sums) / 10) * 10;
         const max = Math.ceil(Math.max(...sums) / 10) * 10;
         const buckets = {};
@@ -465,9 +555,7 @@ export function getSumDistribution(game) {
             if (buckets[key] !== undefined) buckets[key]++;
         }
         return Object.entries(buckets).map(([range, count]) => ({ range, count }));
-    } catch (e) {
-        return [];
-    }
+    }, []);
 }
 
 export function getTrendData(game, windowSize = 50) {
@@ -475,13 +563,13 @@ export function getTrendData(game, windowSize = 50) {
     const gameConfig = getGame(game);
     if (!gameConfig.ballCount) return [];
 
-    try {
+    return safeQuery(() => {
         const allDraws = getDb().prepare(`SELECT draw_id, date, balls FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`).all();
         if (allDraws.length < windowSize) return [];
 
-        // For each window, calculate average sum, even ratio, and top 3 hot numbers
         const results = [];
-        for (let i = windowSize; i <= allDraws.length; i += Math.max(1, Math.floor(windowSize / 5))) {
+        const step = Math.max(1, Math.floor(windowSize / 5));
+        for (let i = windowSize; i <= allDraws.length; i += step) {
             const window = allDraws.slice(i - windowSize, i);
             const freq = {};
             let totalSum = 0;
@@ -499,7 +587,6 @@ export function getTrendData(game, windowSize = 50) {
                     freq[key] = (freq[key] || 0) + 1;
                 }
             }
-
             if (drawCount === 0) continue;
 
             const sortedFreq = Object.entries(freq).sort((a, b) => b[1] - a[1]);
@@ -514,9 +601,7 @@ export function getTrendData(game, windowSize = 50) {
             });
         }
         return results;
-    } catch (e) {
-        return [];
-    }
+    }, []);
 }
 
 export function getEvenOddDistribution(game) {
@@ -524,7 +609,7 @@ export function getEvenOddDistribution(game) {
     const gameConfig = getGame(game);
     if (!gameConfig.ballCount) return [];
 
-    try {
+    return safeQuery(() => {
         const allDraws = getDb().prepare(`SELECT balls FROM ${table}`).all();
         const ballCount = gameConfig.ballCount;
         const dist = {};
@@ -538,10 +623,44 @@ export function getEvenOddDistribution(game) {
         }
 
         const total = Object.values(dist).reduce((s, v) => s + v, 0);
+        if (total === 0) return [];
         return Object.entries(dist)
             .map(([name, value]) => ({ name, value, pct: Math.round((value / total) * 1000) / 10 }))
             .sort((a, b) => b.value - a.value);
-    } catch (e) {
-        return [];
+    }, []);
+}
+
+// ============================================================================
+// SYNC HELPERS — used by /api/sync-all and /api/update
+// ----------------------------------------------------------------------------
+// Single-place INSERT logic. Always idempotent (INSERT OR IGNORE on
+// UNIQUE draw_id). Never deletes existing data.
+// ============================================================================
+
+export function upsertDraw(game, data) {
+    const db = getDb();
+    switch (game) {
+        case '645':
+            return db.prepare(`INSERT OR IGNORE INTO draws_645 (date, draw_id, balls) VALUES (?, ?, ?)`)
+                     .run(data.date, data.drawId, data.balls);
+        case '655':
+            return db.prepare(`INSERT OR IGNORE INTO draws_655 (date, draw_id, balls, special_ball) VALUES (?, ?, ?, ?)`)
+                     .run(data.date, data.drawId, data.balls, data.special_ball);
+        case '535':
+            return db.prepare(`INSERT OR IGNORE INTO draws_535 (date, draw_id, balls) VALUES (?, ?, ?)`)
+                     .run(data.date, data.drawId, data.balls);
+        case 'max3dpro':
+            return db.prepare(`INSERT OR IGNORE INTO draws_max3dpro (date, draw_id, dac_biet, nhat, nhi, ba) VALUES (?, ?, ?, ?, ?, ?)`)
+                     .run(data.date, data.drawId, data.dac_biet, data.nhat, data.nhi, data.ba);
+        default:
+            throw new Error(`Unknown game: ${game}`);
     }
+}
+
+export function countDraws(game) {
+    const table = validateGame(game);
+    return safeQuery(
+        () => getDb().prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,
+        0
+    );
 }
