@@ -419,6 +419,32 @@ export async function generateSharpPrediction(game, options = {}) {
   if (stats.length === 0) return null;
   const specialStats = getSpecialBallStats(game);
 
+  // Bao support: when user picks Bao N (> ballCount), route to the wheel-
+  // optimizing variant which returns N picks instead of ballCount picks.
+  const bao = options.bao;
+  if (bao && bao !== 'standard') {
+    const baoSizeNum = parseInt(bao, 10);
+    if (baoSizeNum > gameConfig.ballCount) {
+      const baoResult = generateSharpBao({
+        game, gameConfig, stats,
+        baoSize: baoSizeNum,
+        salt: options.salt || String(Date.now()),
+      });
+      return {
+        algorithm: 'sharp-v5-bao',
+        ...baoResult,
+        realityCheck: {
+          ev: expectedValue(game),
+          verdict: getHonestVerdict(game),
+          baoMath: baoMath(game, baoSizeNum),
+          jackpotOdds: game === '645' ? '1 / 8,145,060'
+            : game === '655' ? '1 / 28,989,675'
+            : '1 / 324,632',
+        },
+      };
+    }
+  }
+
   const sharpResult = generateSharpPick({
     game,
     gameConfig,

@@ -33,42 +33,135 @@ function getDbPath() {
     return path.join(process.cwd(), 'vietlott.db');
 }
 
+function hasUniqueOnDrawId(db, tableName) {
+    // SQLite has no direct "is column UNIQUE" query — we read CREATE TABLE sql
+    const row = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`).get(tableName);
+    if (!row?.sql) return false;
+    // Looks for `draw_id <type> UNIQUE` (case-insensitive) in DDL
+    return /draw_id\s+\w+\s+UNIQUE/i.test(row.sql);
+}
+
+/**
+ * Rebuild table with proper schema (UNIQUE on draw_id) and dedupe in one shot.
+ * SQLite cannot ALTER TABLE to add UNIQUE — we have to do the rename dance.
+ */
+function rebuildTableWithUniqueDrawId(db, tableName, columns, createDdl) {
+    const tmpName = `${tableName}_new_${Date.now()}`;
+    db.exec(createDdl.replace(tableName, tmpName));
+
+    // Copy ONE row per draw_id (most-complete = longest balls string), preserving data
+    const colList = columns.join(', ');
+    const balls = columns.includes('balls') ? 'balls' : (columns.includes('dac_biet') ? 'dac_biet' : null);
+
+    if (balls) {
+        // Prefer rows with non-empty balls field
+        db.exec(`
+            INSERT INTO ${tmpName} (${colList})
+            SELECT ${colList} FROM ${tableName} t1
+            WHERE rowid = (
+                SELECT t2.rowid FROM ${tableName} t2
+                WHERE t2.draw_id = t1.draw_id
+                ORDER BY LENGTH(COALESCE(t2.${balls}, '')) DESC, t2.rowid ASC
+                LIMIT 1
+            );
+        `);
+    } else {
+        db.exec(`
+            INSERT INTO ${tmpName} (${colList})
+            SELECT ${colList} FROM ${tableName} t1
+            WHERE rowid = (
+                SELECT MIN(rowid) FROM ${tableName}
+                WHERE draw_id = t1.draw_id
+            );
+        `);
+    }
+
+    db.exec(`DROP TABLE ${tableName};`);
+    db.exec(`ALTER TABLE ${tmpName} RENAME TO ${tableName};`);
+}
+
 function migrateDuplicates(db) {
-    // Heal legacy tables that lack UNIQUE on draw_id and accumulated dupes
-    // from inconsistent date formatting in old scrapers.
     const tables = [
-        { name: 'draws_645', cols: 'date, draw_id, balls' },
-        { name: 'draws_655', cols: 'date, draw_id, balls, special_ball' },
-        { name: 'draws_535', cols: 'date, draw_id, balls' },
-        { name: 'draws_max3dpro', cols: 'date, draw_id, dac_biet, nhat, nhi, ba' },
+        {
+            name: 'draws_645',
+            columns: ['date', 'draw_id', 'balls'],
+            createDdl: `CREATE TABLE draws_645 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                draw_id TEXT UNIQUE,
+                balls TEXT
+            )`,
+        },
+        {
+            name: 'draws_655',
+            columns: ['date', 'draw_id', 'balls', 'special_ball'],
+            createDdl: `CREATE TABLE draws_655 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                draw_id TEXT UNIQUE,
+                balls TEXT,
+                special_ball TEXT
+            )`,
+        },
+        {
+            name: 'draws_535',
+            columns: ['date', 'draw_id', 'balls'],
+            createDdl: `CREATE TABLE draws_535 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                draw_id TEXT UNIQUE,
+                balls TEXT
+            )`,
+        },
+        {
+            name: 'draws_max3dpro',
+            columns: ['date', 'draw_id', 'dac_biet', 'nhat', 'nhi', 'ba'],
+            createDdl: `CREATE TABLE draws_max3dpro (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                draw_id TEXT UNIQUE,
+                dac_biet TEXT,
+                nhat TEXT,
+                nhi TEXT,
+                ba TEXT
+            )`,
+        },
     ];
 
     for (const t of tables) {
         try {
             const exists = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(t.name);
             if (!exists) continue;
+
             const total = db.prepare(`SELECT COUNT(*) AS n FROM ${t.name}`).get().n;
             const unique = db.prepare(`SELECT COUNT(DISTINCT draw_id) AS n FROM ${t.name}`).get().n;
-            if (total > unique) {
-                console.log(`[db] Migrating ${t.name}: ${total} rows → ${unique} unique. Deduping...`);
-                // Normalize dates AND dedupe: keep row with longest balls string (most complete)
-                db.exec(`
-                    CREATE TEMP TABLE _dedup AS
-                    SELECT MIN(rowid) AS keep_id
-                    FROM ${t.name}
-                    GROUP BY draw_id;
+            const hasUnique = hasUniqueOnDrawId(db, t.name);
 
-                    DELETE FROM ${t.name}
-                    WHERE rowid NOT IN (SELECT keep_id FROM _dedup);
-
-                    DROP TABLE _dedup;
-                `);
+            // Two trigger conditions: dupes exist, OR schema lacks UNIQUE (which would
+            // let dupes re-accumulate on next sync)
+            if (total > unique || !hasUnique) {
+                console.log(`[db] Migrating ${t.name}: ${total} rows, ${unique} unique, hasUnique=${hasUnique}. Rebuilding...`);
+                db.transaction(() => {
+                    rebuildTableWithUniqueDrawId(db, t.name, t.columns, t.createDdl);
+                })();
                 const after = db.prepare(`SELECT COUNT(*) AS n FROM ${t.name}`).get().n;
-                console.log(`[db] ${t.name}: now ${after} rows.`);
+                console.log(`[db] ${t.name}: now ${after} rows, UNIQUE constraint enforced.`);
             }
         } catch (e) {
-            console.warn(`[db] Migration check failed for ${t.name}:`, e.message);
+            console.warn(`[db] Migration failed for ${t.name}:`, e.message);
         }
+    }
+
+    // Rebuild indexes (lost when tables rebuilt)
+    try {
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_645_draw_id ON draws_645(draw_id);
+            CREATE INDEX IF NOT EXISTS idx_655_draw_id ON draws_655(draw_id);
+            CREATE INDEX IF NOT EXISTS idx_535_draw_id ON draws_535(draw_id);
+            CREATE INDEX IF NOT EXISTS idx_max3dpro_draw_id ON draws_max3dpro(draw_id);
+        `);
+    } catch (e) {
+        console.warn('[db] Index rebuild failed:', e.message);
     }
 }
 

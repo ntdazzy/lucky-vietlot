@@ -8,6 +8,18 @@ const GAME_NAMES = getGameNames();
 const GAME_KEYS = ['645', '655', '535', 'max3dpro'];
 const UNSUPPORTED_GAMES = new Set(['max3dpro']);
 
+function gameConfigBallCount(game) {
+  return game === '535' ? 5 : 6;
+}
+
+function comboCount(n, k) {
+  if (k > n || k < 0) return 0;
+  k = Math.min(k, n - k);
+  let r = 1;
+  for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
+  return Math.round(r);
+}
+
 export default function PredictionPage() {
   const [game, setGame] = useState('645');
   const [prediction, setPrediction] = useState(null);
@@ -27,7 +39,7 @@ export default function PredictionPage() {
   const generate = useCallback(async () => {
     setLoading(true);
     const result = sharpMode
-      ? await generateSharpPrediction(game)
+      ? await generateSharpPrediction(game, { bao })
       : await generatePrediction(game, useAllDraws, bao);
     setPrediction(result);
     if (result) await loadHistory();
@@ -80,11 +92,11 @@ export default function PredictionPage() {
       ) : (
         <div className="prediction-content">
 
-          {/* ALGORITHM MODE — Sharp v5 vs Standard */}
+          {/* CÁCH CHỌN SỐ */}
           <div className="glass-panel" style={{ borderLeft: '3px solid #a855f7' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
               <Crosshair size={18} color="#a855f7" />
-              <strong style={{ fontSize: '0.95rem' }}>Thuật toán</strong>
+              <strong style={{ fontSize: '0.95rem' }}>Cách chọn số</strong>
             </div>
             <div className="data-source-toggle">
               <button
@@ -92,160 +104,223 @@ export default function PredictionPage() {
                 className={`data-source-btn${sharpMode ? ' active' : ''}`}
               >
                 <Shield size={16} />
-                <span>Sharp v5 (Anti-Share)</span>
+                <span>Bộ Số Ít Đụng Hàng</span>
               </button>
               <button
                 onClick={() => setSharpMode(false)}
                 className={`data-source-btn${!sharpMode ? ' active' : ''}`}
               >
                 <Zap size={16} />
-                <span>Ensemble Cổ Điển</span>
+                <span>Theo Lịch Sử</span>
               </button>
             </div>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '10px', lineHeight: 1.5 }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '12px', lineHeight: 1.6 }}>
               {sharpMode
-                ? '🛡️ Tối ưu hoá để giữ phần lớn jackpot nếu trúng — tránh các bộ số nhiều người chọn (sinh nhật, số "may mắn", dãy liên tiếp). KHÔNG tăng xác suất trúng.'
-                : '⚡ Ensemble 3 chiến lược (hot/balanced/cold) + Markov + backtest. Phù hợp để khám phá pattern lịch sử.'}
+                ? '🛡️ Chọn bộ số mà ÍT người chơi đặt (tránh sinh nhật, số "may mắn", dãy liên tiếp). Nếu trúng, bạn không phải chia jackpot với nhiều người.'
+                : '⚡ Tham khảo các số hay ra trong lịch sử (số nóng, số lạnh, cặp số đi cùng nhau).'}
             </p>
+            {sharpMode && (
+              <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(16,185,129,0.08)', borderRadius: '8px', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                💡 <strong style={{ color: '#10b981' }}>Lưu ý quan trọng:</strong> Mọi bộ số đều có cơ hội trúng <strong>như nhau</strong> (1 / 8 triệu cho Mega). Cách này KHÔNG khó trúng hơn — chỉ khác là nếu trúng thì giải lớn hơn vì ít người chia.
+              </div>
+            )}
           </div>
 
-          {/* DATA SOURCE & BAO TOGGLE — ẩn khi Sharp mode (không dùng dữ liệu kiểu cũ) */}
-          {!sharpMode && (
-          <div className="glass-panel data-source-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'center' }}>
-              <div className="data-source-toggle">
-                <button
-                  onClick={() => setUseAllDraws(false)}
-                  className={`data-source-btn${!useAllDraws ? ' active' : ''}`}
-                >
-                  <Clock size={16} />
-                  <span>200 kỳ gần nhất</span>
-                </button>
-                <button
-                  onClick={() => setUseAllDraws(true)}
-                  className={`data-source-btn${useAllDraws ? ' active' : ''}`}
-                >
-                  <Database size={16} />
-                  <span>Tất cả các kỳ</span>
-                </button>
-              </div>
-
+          {/* CHẾ ĐỘ CHƠI (Bao) — hiện ở cả 2 mode */}
+          <div className="glass-panel">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <Layers size={18} color="#3b82f6" />
+              <strong style={{ fontSize: '0.95rem' }}>Chế độ chơi</strong>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
               <div className="custom-select-wrapper">
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Chế độ:</span>
-                <select 
-                  value={bao} 
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Loại vé:</span>
+                <select
+                  value={bao}
                   onChange={(e) => setBao(e.target.value)}
                   className="custom-select"
                 >
-                  <option value="standard">Tiêu chuẩn</option>
+                  <option value="standard">Vé thường ({gameConfigBallCount(game)} số)</option>
+                  {(game === '645' || game === '655') && !sharpMode && (
+                    <option value="5">Bao 5 (chọn 5 số, hệ thống ghép số 6)</option>
+                  )}
                   {(game === '645' || game === '655') && (
                     <>
-                      <option value="5">Bao 5</option>
                       {[7, 8, 9, 10, 11, 12, 13, 14, 15, 18].map(b => (
-                        <option key={b} value={b}>Bao {b}</option>
+                        <option key={b} value={b}>Bao {b} (chọn {b} số, sinh {comboCount(b, 6)} vé)</option>
                       ))}
                     </>
                   )}
                   {game === '535' && (
                     <>
                       {[6, 7, 8, 9, 10].map(b => (
-                        <option key={b} value={b}>Bao {b}</option>
+                        <option key={b} value={b}>Bao {b} (chọn {b} số, sinh {comboCount(b, 5)} vé)</option>
                       ))}
                     </>
                   )}
                 </select>
               </div>
             </div>
-            {prediction && !sharpMode && (
-              <div className="data-source-info">
+            {bao !== 'standard' && bao !== '5' && (
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '10px', lineHeight: 1.5 }}>
+                💰 Bao {bao}: chi phí <strong style={{ color: 'var(--primary)' }}>{(comboCount(parseInt(bao), game === '535' ? 5 : 6) * 10000).toLocaleString('vi-VN')}đ</strong>. Nếu trúng đủ 6/6 trong số bạn chọn, bạn sẽ trúng nhiều giải cùng lúc.
+              </p>
+            )}
+          </div>
+
+          {/* DATA SOURCE — chỉ hiện ở mode "Theo Lịch Sử" */}
+          {!sharpMode && (
+          <div className="glass-panel data-source-panel">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <Database size={18} color="#06b6d4" />
+              <strong style={{ fontSize: '0.95rem' }}>Phạm vi dữ liệu</strong>
+            </div>
+            <div className="data-source-toggle">
+              <button
+                onClick={() => setUseAllDraws(false)}
+                className={`data-source-btn${!useAllDraws ? ' active' : ''}`}
+              >
+                <Clock size={16} />
+                <span>200 kỳ gần đây</span>
+              </button>
+              <button
+                onClick={() => setUseAllDraws(true)}
+                className={`data-source-btn${useAllDraws ? ' active' : ''}`}
+              >
+                <Database size={16} />
+                <span>Toàn bộ lịch sử</span>
+              </button>
+            </div>
+            {prediction && !sharpMode && prediction.drawsAnalyzed && (
+              <div className="data-source-info" style={{ marginTop: '10px' }}>
                 <Zap size={14} />
                 <span>
-                  Đang phân tích <strong>{prediction.drawsAnalyzed}</strong> kỳ quay |
-                  Ensemble: {prediction.candidatesFound} ứng viên từ {prediction.attempts} lượt thử
+                  Đã phân tích <strong>{prediction.drawsAnalyzed}</strong> kỳ quay,
+                  tìm được {prediction.candidatesFound} bộ số khả thi.
                 </span>
               </div>
             )}
           </div>
           )}
 
-          {/* REALITY CHECK — luôn hiển thị, là điểm trung thực của app */}
+          {/* SỰ THẬT VỀ VÉ SỐ */}
           {prediction?.realityCheck?.ev && (
             <div className="glass-panel" style={{ borderLeft: '3px solid #ef4444', background: 'rgba(239, 68, 68, 0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                 <AlertTriangle size={18} color="#ef4444" />
-                <strong style={{ fontSize: '0.95rem' }}>Kiểm Tra Thực Tế (Toán Học)</strong>
+                <strong style={{ fontSize: '0.95rem' }}>Sự thật bạn cần biết</strong>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '12px' }}>
                 <div className="stat-card">
-                  <div className="stat-card__label">Xác suất trúng JP</div>
+                  <div className="stat-card__label">Cơ hội trúng giải lớn</div>
                   <div className="stat-card__value" style={{ color: '#ef4444', fontSize: '0.95rem' }}>
                     {prediction.realityCheck.jackpotOdds || '—'}
                   </div>
+                  <div className="stat-card__sub">cho mỗi vé</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-card__label">Kỳ vọng mỗi vé</div>
+                  <div className="stat-card__label">Trung bình mỗi vé</div>
                   <div className="stat-card__value" style={{ color: '#ef4444', fontSize: '0.95rem' }}>
-                    −{Math.round(prediction.realityCheck.ev.expectedLossPerTicket).toLocaleString('vi-VN')}đ
+                    mất {Math.round(prediction.realityCheck.ev.expectedLossPerTicket).toLocaleString('vi-VN')}đ
                   </div>
+                  <div className="stat-card__sub">tính theo xác suất</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-card__label">Tỷ lệ thu hồi</div>
+                  <div className="stat-card__label">Mỗi 10.000đ</div>
                   <div className="stat-card__value" style={{ color: '#f59e0b', fontSize: '0.95rem' }}>
-                    {Math.round(prediction.realityCheck.ev.returnRate * 100)}%
+                    đáng giá {Math.round(prediction.realityCheck.ev.expectedReturn).toLocaleString('vi-VN')}đ
                   </div>
+                  <div className="stat-card__sub">trung bình</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-card__label">House edge</div>
+                  <div className="stat-card__label">Phần Vietlott giữ</div>
                   <div className="stat-card__value" style={{ color: '#ef4444', fontSize: '0.95rem' }}>
                     {Math.round(prediction.realityCheck.ev.houseEdge * 100)}%
                   </div>
+                  <div className="stat-card__sub">trên mỗi vé bán ra</div>
                 </div>
               </div>
               {prediction.realityCheck.verdict?.verdict && (
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
                   💡 {prediction.realityCheck.verdict.verdict}
                 </p>
               )}
             </div>
           )}
 
-          {/* SHARP v5 METRICS */}
+          {/* BAO INFO PANEL — khi user chọn Bao */}
+          {prediction?.baoSize && (
+            <div className="glass-panel" style={{ borderLeft: '3px solid #3b82f6' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <Layers size={18} color="#3b82f6" />
+                <strong style={{ fontSize: '0.95rem' }}>Thông tin vé Bao {prediction.baoSize}</strong>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                <div className="stat-card">
+                  <div className="stat-card__label">Số bạn chọn</div>
+                  <div className="stat-card__value" style={{ color: '#3b82f6' }}>{prediction.baoSize}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-card__label">Số vé tạo ra</div>
+                  <div className="stat-card__value" style={{ color: '#3b82f6' }}>{prediction.ticketsGenerated}</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-card__label">Chi phí</div>
+                  <div className="stat-card__value" style={{ color: 'var(--primary)' }}>
+                    {prediction.totalCost.toLocaleString('vi-VN')}đ
+                  </div>
+                </div>
+                {prediction.realityCheck?.baoMath && (
+                  <div className="stat-card">
+                    <div className="stat-card__label">Cơ hội trúng JP</div>
+                    <div className="stat-card__value" style={{ color: '#ef4444', fontSize: '0.85rem' }}>
+                      1 / {prediction.realityCheck.baoMath.oddsAgainst.toLocaleString('vi-VN')}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '12px', marginBottom: 0, lineHeight: 1.5 }}>
+                💡 Bao {prediction.baoSize} nghĩa là bạn chọn {prediction.baoSize} số, hệ thống sẽ tự ghép thành {prediction.ticketsGenerated} vé khác nhau (mỗi tổ hợp {gameConfigBallCount(game)} số). Nếu kết quả quay có đủ {gameConfigBallCount(game)} số nằm trong bộ {prediction.baoSize} số của bạn → bạn trúng giải lớn + nhiều giải phụ cùng lúc.
+              </p>
+            </div>
+          )}
+
+          {/* BỘ SỐ ÍT ĐỤNG HÀNG — Chi tiết */}
           {prediction?.sharpMetrics && (
             <div className="glass-panel" style={{ borderLeft: '3px solid #10b981' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                 <Shield size={18} color="#10b981" />
-                <strong style={{ fontSize: '0.95rem' }}>Sharp v5 — Anti-Share Metrics</strong>
+                <strong style={{ fontSize: '0.95rem' }}>Bộ số "ít đụng hàng" — chi tiết</strong>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
                 <div className="stat-card">
-                  <div className="stat-card__label">Share Multiplier</div>
+                  <div className="stat-card__label">Mức độ đụng hàng</div>
                   <div className="stat-card__value" style={{ color: prediction.sharpMetrics.expectedShareMultiplier < 1 ? '#10b981' : '#f59e0b' }}>
-                    {prediction.sharpMetrics.expectedShareMultiplier}×
+                    {prediction.sharpMetrics.expectedShareMultiplier < 1 ? 'Thấp' : prediction.sharpMetrics.expectedShareMultiplier > 1.2 ? 'Cao' : 'Bình thường'}
                   </div>
-                  <div className="stat-card__sub">Càng thấp càng tốt</div>
+                  <div className="stat-card__sub">điểm: {prediction.sharpMetrics.expectedShareMultiplier}× (càng thấp càng tốt)</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-card__label">Số thấp (≤31)</div>
+                  <div className="stat-card__label">Số nhỏ (≤ 31)</div>
                   <div className="stat-card__value" style={{ color: prediction.breakdown.lowCount <= 3 ? '#10b981' : '#f59e0b' }}>
                     {prediction.breakdown.lowCount}/{prediction.main.length}
                   </div>
-                  <div className="stat-card__sub">Tránh birthday bias</div>
+                  <div className="stat-card__sub">{prediction.breakdown.lowCount <= 3 ? 'tốt — ít trùng sinh nhật' : 'nhiều số sinh nhật'}</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-card__label">Avg Popularity</div>
-                  <div className="stat-card__value" style={{ color: prediction.sharpMetrics.avgPopularityScore < 1.1 ? '#10b981' : '#f59e0b' }}>
-                    {prediction.sharpMetrics.avgPopularityScore}
+                  <div className="stat-card__label">Độ phổ biến</div>
+                  <div className="stat-card__value" style={{ color: prediction.sharpMetrics.avgPopularityScore < 1.0 ? '#10b981' : '#f59e0b' }}>
+                    {prediction.sharpMetrics.avgPopularityScore < 1.0 ? 'Ít chọn' : 'Hay chọn'}
                   </div>
-                  <div className="stat-card__sub">&lt; 1.0 = bộ số "lạnh đám đông"</div>
+                  <div className="stat-card__sub">điểm: {prediction.sharpMetrics.avgPopularityScore} ({prediction.sharpMetrics.avgPopularityScore < 1.0 ? '< 1 = lạnh' : '≥ 1 = nóng'})</div>
                 </div>
               </div>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
                 {prediction.sharpMetrics.shareVsTypical}
               </p>
               {prediction.calibration?.significance && (
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', marginBottom: 0, fontStyle: 'italic' }}>
-                  📊 Backtest signal: z-score {prediction.calibration.significance.zScore} —
-                  {prediction.calibration.significance.verdict}
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '10px', marginBottom: 0, fontStyle: 'italic' }}>
+                  📊 {prediction.calibration.significance.verdict}
                 </p>
               )}
             </div>
@@ -273,16 +348,16 @@ export default function PredictionPage() {
                   )}
                 </div>
 
-                {/* BREAKDOWN */}
+                {/* BREAKDOWN — bỏ qua field rỗng (Bao mode không có sum/spread) */}
                 {prediction.breakdown && (
                   <div className="breakdown-grid mb-md">
                     {[
                       { label: 'Tổng', value: prediction.breakdown.sum, sub: prediction.sumRange ? `${prediction.sumRange[0]}–${prediction.sumRange[1]}` : null, color: '#3b82f6' },
-                      { label: 'Chẵn/Lẻ', value: `${prediction.breakdown.evens}/${prediction.breakdown.odds}`, color: '#10b981' },
+                      { label: 'Chẵn/Lẻ', value: prediction.breakdown.evens != null ? `${prediction.breakdown.evens}/${prediction.breakdown.odds}` : null, color: '#10b981' },
                       { label: 'Độ rộng', value: prediction.breakdown.spread, color: '#f59e0b' },
                       { label: 'Vùng số', value: prediction.breakdown.decadeCount, color: '#a855f7' },
                       { label: 'Lượt thử', value: prediction.attempts, color: '#ef4444' },
-                    ].map((item, idx) => (
+                    ].filter(item => item.value !== undefined && item.value !== null && item.value !== '').map((item, idx) => (
                       <div key={idx} className="stat-card">
                         <div className="stat-card__label">{item.label}</div>
                         <div className="stat-card__value" style={{ color: item.color }}>{item.value}</div>
@@ -456,19 +531,31 @@ export default function PredictionPage() {
             )}
           </div>
 
-          {/* ALGORITHM EXPLANATION */}
+          {/* CÁCH HỆ THỐNG CHỌN SỐ */}
           <div className="glass-panel">
             <h3 className="section-header">
-              <Layers size={18} color="var(--primary)" /> Cách Máy Tính Chọn Số (Dễ Hiểu)
+              <Layers size={18} color="var(--primary)" /> Cách hệ thống chọn số (dễ hiểu)
             </h3>
             <div className="algo-grid">
-              {[
-                { color: '#3b82f6', title: 'Con số đang hot', desc: 'Ưu tiên chọn những số thường xuyên xuất hiện gần đây.' },
-                { color: '#10b981', title: 'Đi chung một cặp', desc: 'Tìm các số hay rủ nhau ra cùng lúc trong các kỳ trước.' },
-                { color: '#ef4444', title: 'Con số ngủ đông', desc: 'Cố tình chọn số đã lâu lắm không thấy để đón đầu.' },
+              {sharpMode ? [
+                { color: '#10b981', title: 'Tránh số sinh nhật', desc: 'Hầu hết người chơi pick theo ngày sinh (1-31), nên hệ thống ưu tiên các số > 31 để bộ của bạn ít trùng với người khác.' },
+                { color: '#a855f7', title: 'Tránh số "may mắn"', desc: 'Các số 7, 8, 9, 68, 86... được nhiều người tin là may. Hệ thống tránh nhồi quá nhiều số này.' },
+                { color: '#ef4444', title: 'Tránh dãy liên tiếp', desc: 'Bộ như 01-02-03-04-05-06 nhiều người chọn vì "không ai chọn đâu" — nhưng thực ra rất phổ biến.' },
+                { color: '#3b82f6', title: 'Rải đều khắp bảng số', desc: 'Không tụm vào 1 vùng (như 30-39). Trải đều giúp đa dạng vùng số.' },
+                { color: '#f59e0b', title: 'Cân chẵn / lẻ', desc: 'Tránh bộ toàn chẵn hoặc toàn lẻ — kiểu bộ này nhiều người chọn vì trông "đặc biệt".' },
+                { color: '#06b6d4', title: 'Không hứa trúng nhiều hơn', desc: 'Mọi bộ số đều có cơ hội trúng như nhau. Cách này chỉ giúp bạn không phải CHIA GIẢI với nhiều người nếu may mắn trúng.' },
+              ].map((item, idx) => (
+                <div key={idx} className="algo-card" style={{ borderLeftColor: item.color }}>
+                  <div className="algo-card__title" style={{ color: item.color }}>{item.title}</div>
+                  {item.desc}
+                </div>
+              )) : [
+                { color: '#3b82f6', title: 'Số đang hay ra', desc: 'Ưu tiên chọn những số thường xuyên xuất hiện trong các kỳ gần đây.' },
+                { color: '#10b981', title: 'Số đi chung một cặp', desc: 'Tìm các số hay rủ nhau ra cùng lúc trong các kỳ trước.' },
+                { color: '#ef4444', title: 'Số ngủ đông', desc: 'Cố tình chọn số đã lâu không thấy để đón đầu.' },
                 { color: '#a855f7', title: 'Dải số đồng đều', desc: 'Không chọn tụm lại một chỗ, rải đều các đầu số từ nhỏ đến lớn.' },
-                { color: '#f59e0b', title: 'Ensemble AI', desc: 'Chạy 3 chiến lược (nóng, cân bằng, lạnh) rồi chọn bộ tốt nhất.' },
-                { color: '#06b6d4', title: 'Kiểm chứng ngược', desc: 'Backtest trên 100 kỳ gần nhất để đánh giá hiệu quả thuật toán.' },
+                { color: '#f59e0b', title: 'Phối hợp 3 chiến lược', desc: 'Chạy song song 3 cách: ưa số nóng, cân bằng, săn số lạnh — rồi chọn bộ tốt nhất.' },
+                { color: '#06b6d4', title: 'Đối chiếu lịch sử', desc: 'Thử lại cách chọn này trên 100 kỳ gần nhất xem có thật sự hơn ngẫu nhiên không.' },
               ].map((item, idx) => (
                 <div key={idx} className="algo-card" style={{ borderLeftColor: item.color }}>
                   <div className="algo-card__title" style={{ color: item.color }}>{item.title}</div>

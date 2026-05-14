@@ -130,9 +130,9 @@ export function getHonestVerdict(game) {
     const lossPercent = Math.round(ev.houseEdge * 100);
     return {
         ...ev,
-        verdict: `Trung bình bạn MẤT ${lossPercent}% mỗi vé. ` +
-                 `10.000đ vé → kỳ vọng nhận lại ${Math.round(ev.expectedReturn).toLocaleString('vi-VN')}đ. ` +
-                 `Vietlott KHÔNG phải hình thức đầu tư — đây là giải trí có chi phí.`,
+        verdict: `Trung bình mỗi vé 10.000đ chỉ "đáng giá" ${Math.round(ev.expectedReturn).toLocaleString('vi-VN')}đ ` +
+                 `(${lossPercent}% còn lại do Vietlott giữ). Coi đây là chi phí giải trí, ` +
+                 `đừng coi là kênh đầu tư.`,
         warningLevel: 'high',
     };
 }
@@ -160,12 +160,11 @@ export function backtestSignificance(game, observedAvgMatch, testedDraws) {
         observed: Math.round(observedAvgMatch * 100) / 100,
         lift: Math.round(lift * 1000) / 1000,
         zScore: Math.round(zScore * 100) / 100,
-        // |z| < 2 = could be pure luck; |z| > 2 = unlikely chance; |z| > 3 = strong signal
         significant: Math.abs(zScore) > 2,
         verdict: Math.abs(zScore) < 2
-            ? '⚠️ Sự khác biệt này KHÔNG có ý nghĩa thống kê — có thể chỉ là may rủi'
+            ? 'Đối chiếu lịch sử: thuật toán "nóng/lạnh" chưa cho thấy hơn việc chọn ngẫu nhiên — sự khác biệt nhỏ có thể chỉ là may rủi.'
             : Math.abs(zScore) < 3
-                ? 'Có dấu hiệu lệch nhẹ so với random, cần thêm dữ liệu để chắc chắn'
-                : '⚠️ Lệch mạnh — kiểm tra lại logic, có thể có bug trong backtest',
+                ? 'Đối chiếu lịch sử: có dấu hiệu hơn ngẫu nhiên một chút, nhưng cần thêm nhiều kỳ nữa để chắc chắn.'
+                : 'Đối chiếu lịch sử: kết quả lệch quá xa, có thể do dữ liệu có vấn đề (kỳ trùng lặp).',
     };
 }

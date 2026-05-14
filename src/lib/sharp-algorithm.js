@@ -358,11 +358,11 @@ export function generateSharpPick({ game, gameConfig, stats, specialStats = [], 
             highCount: ballCount - lowCount,
         },
         sharpMetrics: {
-            // The honest claims, surfaced for UI
             expectedShareMultiplier: Math.round(best.share * 100) / 100,
+            // Plain-Vietnamese friendly summary
             shareVsTypical: best.share < 1
-                ? `~${Math.round((1 / best.share - 1) * 100)}% more of the jackpot kept (vs typical pick)`
-                : `~${Math.round((best.share - 1) * 100)}% smaller share (vs typical pick) — try again`,
+                ? `Nếu trúng, bạn có thể giữ được nhiều hơn ~${Math.round((1 / best.share - 1) * 100)}% giải so với pick thông thường (vì ít người chọn bộ này).`
+                : `Bộ số này có vẻ khá phổ biến — nếu trúng, có thể phải chia với nhiều người. Bấm "Tạo bộ số mới" để thử lại.`,
             avgPopularityScore: Math.round(
                 (best.picks.reduce((s, n) => s + popularityScore(n, maxBall), 0) / ballCount) * 100
             ) / 100,
@@ -374,9 +374,9 @@ export function generateSharpPick({ game, gameConfig, stats, specialStats = [], 
             probabilityOfJackpot: game === '645' ? '1 / 8,145,060'
                 : game === '655' ? '1 / 28,989,675'
                 : '1 / 324,632',
-            note: 'P(trúng) KHÔNG được cải thiện so với chọn ngẫu nhiên. ' +
-                  'Sharp v5 chỉ tối ưu hoá kỳ vọng tiền nhận được NẾU trúng, ' +
-                  'bằng cách tránh các bộ số mà nhiều người cùng chọn.',
+            note: 'Bộ số nào cũng có cơ hội trúng GIỐNG NHAU. Bộ "ít đụng hàng" ' +
+                  'không khó trúng hơn — chỉ là nếu trúng, bạn không phải chia ' +
+                  'giải với nhiều người khác.',
         },
     };
 }
@@ -451,6 +451,8 @@ export function generateSharpBao({ game, gameConfig, stats, baoSize, salt = '' }
 
     const nums = picked.map(p => p.num).sort((a, b) => a - b);
     const ticketsGenerated = binomialCoefficient(baoSize, ballCount);
+    const avgPop = nums.reduce((s, n) => s + popularityScore(n, maxBall), 0) / nums.length;
+    const lowCount = nums.filter(n => n <= 31).length;
 
     return {
         main: nums.map(n => n.toString().padStart(2, '0')),
@@ -460,12 +462,17 @@ export function generateSharpBao({ game, gameConfig, stats, baoSize, salt = '' }
         breakdown: {
             evens, odds,
             decadeCount: decadesUsed.size,
-            avgPopularity: Math.round(
-                (nums.reduce((s, n) => s + popularityScore(n, maxBall), 0) / nums.length) * 100
-            ) / 100,
+            lowCount,
+            highCount: nums.length - lowCount,
         },
-        disclaimer: 'Bao N tăng số vé bạn nắm giữ → tăng tuyến tính cả chi phí và xác suất. ' +
-                    'Kỳ vọng (EV) MỖI VÉ không thay đổi — bạn chi nhiều hơn, kỳ vọng mất nhiều hơn.',
+        sharpMetrics: {
+            expectedShareMultiplier: Math.round(avgPop * 100) / 100,
+            shareVsTypical: avgPop < 1
+                ? `Bộ ${baoSize} số này ít đụng hàng — nếu trúng, bạn ít phải chia giải.`
+                : `Bộ ${baoSize} số khá phổ biến — thử "Tạo bộ số mới" để được bộ ít đụng hàng hơn.`,
+            avgPopularityScore: Math.round(avgPop * 100) / 100,
+        },
+        disclaimer: 'Bao tăng cả số vé và chi phí cùng tỷ lệ. Cơ hội trúng MỖI VÉ không thay đổi — bạn chi nhiều hơn, có nhiều vé hơn, nên cơ hội trúng giải lớn cao hơn tuyến tính (cùng với chi phí).',
     };
 }
 

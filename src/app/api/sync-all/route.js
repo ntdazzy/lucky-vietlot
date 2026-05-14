@@ -25,10 +25,11 @@ const GAMES_CONFIG = [
     { code: 'max3dpro', name: 'Max 3D Pro', path: 'xsmax3dpro', type: 'max3d' },
 ];
 
-const PAGE_DELAY_MS = 500;
+const PAGE_DELAY_MS = 200;        // reduced from 500 — xskt tolerates this fine
 const MAX_PAGES = 500;
 const REQUEST_TIMEOUT_MS = 20000;
-const TELEGRAM_EDIT_DEBOUNCE_MS = 1500; // Stay under Telegram rate limit (1 edit/sec/chat)
+const TELEGRAM_EDIT_DEBOUNCE_MS = 2000; // 4 games × N edits → must stay under 1 edit/sec/chat (safety margin)
+const PAGE_CONCURRENCY = 2;       // fetch 2 pages of same game in parallel (politeness for xskt)
 
 // ============================================================================
 // TELEGRAM PROGRESS REPORTER
@@ -153,80 +154,138 @@ async function fetchPage(url, retries = 2) {
     throw lastErr;
 }
 
-async function syncGame(cfg, reporter, token, progressLines) {
-    let inserted = 0;
-    let totalSeen = 0;
+/**
+ * Sync one game. Tracks:
+ *   - latestDrawId  = the highest draw_id found on page 1 (= total kỳ in real life)
+ *   - lowestProcessedDrawId = lowest draw_id seen so far (= "how far back" we've gone)
+ *
+ * Progress format: "Lotto 5/35: 240 / 2000 kỳ (+15 mới)"
+ *   240 = latestDrawId - lowestProcessedDrawId + 1 (rows scanned, top-down)
+ *   2000 = latestDrawId (real total in lotterie history)
+ */
+async function syncGame(cfg, reporter, token, gameStates, lineIdx) {
+    const state = gameStates[lineIdx];
+    state.status = 'starting';
+    state.name = cfg.name;
     let pagesScanned = 0;
-    const lineIdx = progressLines.length;
-    progressLines.push(`📦 <b>${cfg.name}</b>: bắt đầu…`);
+    let latestDrawId = 0;
+    let lowestProcessedId = Infinity;
 
-    for (let page = 1; page <= MAX_PAGES; page++) {
+    const flush = () => reporter.edit(buildProgressMessage(gameStates));
+
+    // Process pages in batches of PAGE_CONCURRENCY for higher throughput
+    for (let startPage = 1; startPage <= MAX_PAGES; startPage += PAGE_CONCURRENCY) {
         if (isCancelled(token)) {
-            progressLines[lineIdx] = `📦 <b>${cfg.name}</b>: 🛑 đã hủy (+${inserted} mới, ${pagesScanned} trang)`;
-            await reporter.edit(progressLines.join('\n'));
-            return { inserted, cancelled: true };
+            state.status = 'cancelled';
+            await flush();
+            return { inserted: state.inserted, cancelled: true };
         }
 
-        const url = `https://xskt.com.vn/${cfg.path}/trang-${page}`;
-        let html;
-        try {
-            html = await fetchPage(url);
-        } catch (e) {
-            if (e.response?.status === 404) break;
-            progressLines[lineIdx] = `📦 <b>${cfg.name}</b>: ⚠️ lỗi trang ${page} (${e.message}), bỏ qua`;
-            await reporter.edit(progressLines.join('\n'));
-            continue;
-        }
+        const pageNums = [];
+        for (let p = startPage; p < startPage + PAGE_CONCURRENCY && p <= MAX_PAGES; p++) pageNums.push(p);
 
-        const $ = cheerio.load(html);
-        const tables = cfg.type === 'max3d' ? $('table.max3d') : $('table.result');
-        if (tables.length === 0) break;
+        const fetched = await Promise.allSettled(
+            pageNums.map(p => fetchPage(`https://xskt.com.vn/${cfg.path}/trang-${p}`))
+        );
 
-        const draws = [];
-        tables.each((i, el) => {
-            const parsed = parseDrawElement($, el, cfg.type);
-            if (parsed) draws.push(parsed);
-        });
+        let emptyPageHit = false;
+        const allDraws = [];
 
-        // Bulk insert in single transaction — much faster than row-by-row
-        const db = getDb();
-        const tx = db.transaction((rows) => {
-            let added = 0;
-            for (const row of rows) {
-                const r = upsertDraw(cfg.code, row);
-                if (r.changes > 0) added++;
+        for (let i = 0; i < fetched.length; i++) {
+            const page = pageNums[i];
+            const result = fetched[i];
+            if (result.status === 'rejected') {
+                if (result.reason?.response?.status === 404) { emptyPageHit = true; continue; }
+                console.warn(`[sync-all] ${cfg.name} page ${page} failed: ${result.reason?.message}`);
+                continue;
             }
-            return added;
-        });
-
-        const addedThisPage = tx(draws);
-        inserted += addedThisPage;
-        totalSeen += draws.length;
-        pagesScanned = page;
-
-        // Update progress every 2 pages
-        if (page % 2 === 0 || page === 1) {
-            progressLines[lineIdx] = `📦 <b>${cfg.name}</b>: ⏳ trang ${page} | +${inserted} mới / ${totalSeen} đã quét`;
-            await reporter.edit(progressLines.join('\n'));
+            const $ = cheerio.load(result.value);
+            const tables = cfg.type === 'max3d' ? $('table.max3d') : $('table.result');
+            if (tables.length === 0) { emptyPageHit = true; continue; }
+            tables.each((idx, el) => {
+                const parsed = parseDrawElement($, el, cfg.type);
+                if (parsed) {
+                    allDraws.push(parsed);
+                    const idNum = parseInt(parsed.drawId.match(/\d+/)?.[0] || '0', 10);
+                    if (idNum > latestDrawId) latestDrawId = idNum;
+                    if (idNum < lowestProcessedId) lowestProcessedId = idNum;
+                }
+            });
+            pagesScanned = page;
         }
 
-        // If a full page returned 0 new inserts AFTER we already have data,
-        // we've caught up — stop early.
-        if (addedThisPage === 0 && page > 1 && inserted > 0) {
-            const existingCount = totalSeen - inserted;
-            if (existingCount === draws.length) {
-                progressLines[lineIdx] = `📦 <b>${cfg.name}</b>: ✅ đã cập nhật (+${inserted} mới, ${pagesScanned} trang, dừng vì đã đủ)`;
-                await reporter.edit(progressLines.join('\n'));
-                return { inserted, cancelled: false };
+        // Bulk insert in single transaction
+        if (allDraws.length > 0) {
+            const db = getDb();
+            const tx = db.transaction((rows) => {
+                let added = 0;
+                for (const row of rows) {
+                    const r = upsertDraw(cfg.code, row);
+                    if (r.changes > 0) added++;
+                }
+                return added;
+            });
+            const added = tx(allDraws);
+            state.inserted += added;
+            state.scanned += allDraws.length;
+        }
+
+        // Update state for progress display
+        state.latestDrawId = latestDrawId;
+        state.currentDrawId = lowestProcessedId === Infinity ? null : lowestProcessedId;
+        state.pagesScanned = pagesScanned;
+        state.status = 'running';
+        await flush();
+
+        if (emptyPageHit) break;
+
+        // Early stop: if last batch added 0 new rows AND we already have data, we've caught up
+        if (state.scanned > 0 && state.inserted > 0) {
+            const lastBatchAdded = state.scanned - (state.scannedAtLastCheck || 0);
+            const lastBatchNew = state.inserted - (state.insertedAtLastCheck || 0);
+            state.scannedAtLastCheck = state.scanned;
+            state.insertedAtLastCheck = state.inserted;
+            if (lastBatchAdded > 0 && lastBatchNew === 0 && startPage > 1) {
+                state.status = 'caught-up';
+                await flush();
+                return { inserted: state.inserted, cancelled: false };
             }
         }
 
         await new Promise(r => setTimeout(r, PAGE_DELAY_MS));
     }
 
-    progressLines[lineIdx] = `📦 <b>${cfg.name}</b>: ✅ xong (+${inserted} mới, ${pagesScanned} trang)`;
-    await reporter.edit(progressLines.join('\n'));
-    return { inserted, cancelled: false };
+    state.status = 'done';
+    await flush();
+    return { inserted: state.inserted, cancelled: false };
+}
+
+function buildProgressMessage(gameStates) {
+    const lines = ['⚡ <b>Đang đồng bộ dữ liệu...</b>', ''];
+    for (const s of gameStates) {
+        if (!s.name) continue;
+        const icon = s.status === 'done' || s.status === 'caught-up' ? '✅'
+                   : s.status === 'cancelled' ? '🛑'
+                   : s.status === 'error' ? '❌'
+                   : '⏳';
+        let progress = '';
+        if (s.latestDrawId > 0 && s.currentDrawId != null) {
+            // "240 / 2000 kỳ" — số kỳ đã quét / tổng số kỳ trong lịch sử
+            const processed = s.latestDrawId - s.currentDrawId + 1;
+            progress = `${processed.toLocaleString('vi-VN')} / ${s.latestDrawId.toLocaleString('vi-VN')} kỳ`;
+        } else if (s.scanned > 0) {
+            progress = `${s.scanned} kỳ đã quét`;
+        } else {
+            progress = 'đang khởi tạo…';
+        }
+        const newCount = s.inserted > 0 ? ` <i>(+${s.inserted} mới)</i>` : '';
+        const statusNote = s.status === 'caught-up' ? ' — đã cập nhật đủ'
+                        : s.status === 'cancelled' ? ' — đã hủy'
+                        : s.status === 'done' ? ' — hoàn tất'
+                        : '';
+        lines.push(`${icon} <b>${s.name}</b>: ${progress}${newCount}${statusNote}`);
+    }
+    return lines.join('\n');
 }
 
 // ============================================================================
@@ -252,45 +311,56 @@ export async function GET(request) {
     console.log(`[sync-all] Started (token=${token}, full=${fullResync})`);
 
     // Respond to caller immediately. Run sync in background.
-    // We deliberately do NOT await — the caller (Vercel webhook) has a 10s
-    // timeout and only needs to know we accepted the job.
     (async () => {
         const startedAt = Date.now();
-        const progressLines = [
-            `⚡ <b>Bắt đầu đồng bộ ${fullResync ? 'TOÀN BỘ' : 'tăng tiến'}</b>`,
-        ];
-        await reporter.edit(progressLines.join('\n'));
 
-        const summary = { total: 0, perGame: {} };
+        // Pre-build state slots for each game so progress message has stable ordering
+        const gameStates = GAMES_CONFIG.map(cfg => ({
+            name: cfg.name,
+            status: 'pending',
+            inserted: 0,
+            scanned: 0,
+            latestDrawId: 0,
+            currentDrawId: null,
+            pagesScanned: 0,
+            scannedAtLastCheck: 0,
+            insertedAtLastCheck: 0,
+        }));
 
         try {
-            for (const cfg of GAMES_CONFIG) {
-                if (isCancelled(token)) break;
-                try {
-                    const r = await syncGame(cfg, reporter, token, progressLines);
-                    summary.total += r.inserted;
-                    summary.perGame[cfg.name] = r.inserted;
-                    if (r.cancelled) break;
-                } catch (e) {
-                    console.error(`[sync-all] ${cfg.name} fatal:`, e);
-                    progressLines.push(`❌ <b>${cfg.name}</b>: ${e.message}`);
-                    await reporter.edit(progressLines.join('\n'));
-                }
-            }
+            await reporter.edit(buildProgressMessage(gameStates));
 
-            const elapsedMin = Math.round((Date.now() - startedAt) / 60000 * 10) / 10;
-            const cancelled = isCancelled(token);
-            progressLines.push('');
-            progressLines.push(cancelled
-                ? `🛑 <b>ĐÃ HỦY</b> sau ${elapsedMin} phút — đã thêm <b>${summary.total}</b> kỳ.`
-                : `✅ <b>HOÀN TẤT</b> sau ${elapsedMin} phút — đã thêm <b>${summary.total}</b> kỳ mới.`
+            // PARALLEL: sync all 4 games concurrently. Each game has its own
+            // page-fetch loop. This ~4x speedup vs sequential since each game
+            // hits a different xskt.com.vn endpoint, no resource contention.
+            const results = await Promise.allSettled(
+                GAMES_CONFIG.map((cfg, idx) => syncGame(cfg, reporter, token, gameStates, idx))
             );
-            await reporter.flush(progressLines.join('\n'));
-            console.log(`[sync-all] Done (token=${token}, inserted=${summary.total}, cancelled=${cancelled})`);
+
+            const summary = { total: 0 };
+            results.forEach((r, idx) => {
+                if (r.status === 'fulfilled') summary.total += r.value.inserted;
+                else {
+                    console.error(`[sync-all] ${GAMES_CONFIG[idx].name} fatal:`, r.reason);
+                    gameStates[idx].status = 'error';
+                }
+            });
+
+            const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+            const elapsedStr = elapsedSec >= 60
+                ? `${Math.floor(elapsedSec / 60)} phút ${elapsedSec % 60} giây`
+                : `${elapsedSec} giây`;
+            const cancelled = isCancelled(token);
+
+            const finalMsg = buildProgressMessage(gameStates) + '\n\n' +
+                (cancelled
+                    ? `🛑 <b>ĐÃ HỦY</b> sau ${elapsedStr}. Đã thêm <b>${summary.total}</b> kỳ mới.`
+                    : `✅ <b>HOÀN TẤT</b> sau ${elapsedStr}. Đã thêm <b>${summary.total}</b> kỳ mới.`);
+            await reporter.flush(finalMsg);
+            console.log(`[sync-all] Done (token=${token}, inserted=${summary.total}, elapsed=${elapsedSec}s, cancelled=${cancelled})`);
         } catch (e) {
             console.error('[sync-all] Unhandled:', e);
-            progressLines.push(`\n❌ <b>Lỗi không bắt được:</b> ${e.message}`);
-            await reporter.flush(progressLines.join('\n'));
+            await reporter.flush(buildProgressMessage(gameStates) + `\n\n❌ <b>Lỗi:</b> ${e.message}`);
         } finally {
             releaseSyncToken(token);
         }
