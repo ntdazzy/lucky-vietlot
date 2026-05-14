@@ -797,3 +797,17 @@ export function countDraws(game) {
         0
     );
 }
+
+/**
+ * Return ALL draws for a game (ascending by draw_id). Used by match-history
+ * lookups and scientific algorithm to compute profile + overlap stats.
+ */
+export function getAllDraws(game) {
+    const table = validateGame(game);
+    return safeQuery(
+        () => getDb().prepare(
+            `SELECT draw_id, date, balls${game === '655' ? ', special_ball' : ''} FROM ${table} ORDER BY CAST(draw_id AS INTEGER) ASC`
+        ).all(),
+        []
+    );
+}

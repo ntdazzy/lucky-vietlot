@@ -285,44 +285,163 @@ export default function PredictionPage() {
             </div>
           )}
 
-          {/* BỘ SỐ ÍT ĐỤNG HÀNG — Chi tiết */}
-          {prediction?.sharpMetrics && (
+          {/* PHÂN TÍCH KHOA HỌC — Profile fit, anti-share, evidence */}
+          {prediction?.scientific && (
             <div className="glass-panel" style={{ borderLeft: '3px solid #10b981' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                 <Shield size={18} color="#10b981" />
-                <strong style={{ fontSize: '0.95rem' }}>Bộ số "ít đụng hàng" — chi tiết</strong>
+                <strong style={{ fontSize: '0.95rem' }}>Phân tích khoa học (dựa trên {prediction.scientific.profile?.basedOnDraws?.toLocaleString('vi-VN') || prediction.scientific.matchSummary?.totalMatching || '?'} kỳ quá khứ)</strong>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
-                <div className="stat-card">
-                  <div className="stat-card__label">Mức độ đụng hàng</div>
-                  <div className="stat-card__value" style={{ color: prediction.sharpMetrics.expectedShareMultiplier < 1 ? '#10b981' : '#f59e0b' }}>
-                    {prediction.sharpMetrics.expectedShareMultiplier < 1 ? 'Thấp' : prediction.sharpMetrics.expectedShareMultiplier > 1.2 ? 'Cao' : 'Bình thường'}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+                {prediction.scientific.antiShare && (
+                  <div className="stat-card">
+                    <div className="stat-card__label">Mức độ đụng hàng</div>
+                    <div className="stat-card__value" style={{ color: prediction.scientific.antiShare.avgPopularity < 1 ? '#10b981' : '#f59e0b' }}>
+                      {prediction.scientific.antiShare.avgPopularity < 0.95 ? 'Thấp' : prediction.scientific.antiShare.avgPopularity > 1.1 ? 'Cao' : 'TB'}
+                    </div>
+                    <div className="stat-card__sub">điểm: {prediction.scientific.antiShare.avgPopularity}</div>
                   </div>
-                  <div className="stat-card__sub">điểm: {prediction.sharpMetrics.expectedShareMultiplier}× (càng thấp càng tốt)</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-card__label">Số nhỏ (≤ 31)</div>
-                  <div className="stat-card__value" style={{ color: prediction.breakdown.lowCount <= 3 ? '#10b981' : '#f59e0b' }}>
-                    {prediction.breakdown.lowCount}/{prediction.main.length}
+                )}
+                {prediction.scientific.typicality && (
+                  <div className="stat-card">
+                    <div className="stat-card__label">Khớp mẫu quá khứ</div>
+                    <div className="stat-card__value" style={{ color: prediction.scientific.typicality.avgZ < 1.5 ? '#10b981' : '#f59e0b' }}>
+                      {prediction.scientific.typicality.avgZ < 1 ? 'Rất khớp' : prediction.scientific.typicality.avgZ < 2 ? 'Khớp' : 'Khác lạ'}
+                    </div>
+                    <div className="stat-card__sub">độ lệch: {prediction.scientific.typicality.avgZ}σ</div>
                   </div>
-                  <div className="stat-card__sub">{prediction.breakdown.lowCount <= 3 ? 'tốt — ít trùng sinh nhật' : 'nhiều số sinh nhật'}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-card__label">Độ phổ biến</div>
-                  <div className="stat-card__value" style={{ color: prediction.sharpMetrics.avgPopularityScore < 1.0 ? '#10b981' : '#f59e0b' }}>
-                    {prediction.sharpMetrics.avgPopularityScore < 1.0 ? 'Ít chọn' : 'Hay chọn'}
+                )}
+                {prediction.breakdown?.lowCount != null && (
+                  <div className="stat-card">
+                    <div className="stat-card__label">Số nhỏ (≤ 31)</div>
+                    <div className="stat-card__value" style={{ color: prediction.breakdown.lowCount <= 3 ? '#10b981' : '#f59e0b' }}>
+                      {prediction.breakdown.lowCount}/{prediction.main.length}
+                    </div>
+                    <div className="stat-card__sub">tránh sinh nhật</div>
                   </div>
-                  <div className="stat-card__sub">điểm: {prediction.sharpMetrics.avgPopularityScore} ({prediction.sharpMetrics.avgPopularityScore < 1.0 ? '< 1 = lạnh' : '≥ 1 = nóng'})</div>
-                </div>
+                )}
+                {prediction.scientific.matchSummary && (
+                  <div className="stat-card">
+                    <div className="stat-card__label">Trùng &ge;3 số quá khứ</div>
+                    <div className="stat-card__value" style={{ color: prediction.scientific.matchSummary.totalMatching < 10 ? '#10b981' : '#f59e0b' }}>
+                      {prediction.scientific.matchSummary.totalMatching} kỳ
+                    </div>
+                    <div className="stat-card__sub">{prediction.scientific.matchSummary.pctOfHistory}% lịch sử</div>
+                  </div>
+                )}
               </div>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-                {prediction.sharpMetrics.shareVsTypical}
-              </p>
-              {prediction.calibration?.significance && (
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '10px', marginBottom: 0, fontStyle: 'italic' }}>
-                  📊 {prediction.calibration.significance.verdict}
+
+              {prediction.scientific.antiShare?.verdict && (
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px', lineHeight: 1.5 }}>
+                  💡 {prediction.scientific.antiShare.verdict}
                 </p>
               )}
+              {prediction.scientific.typicality?.verdict && (
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                  📊 {prediction.scientific.typicality.verdict}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* MATCH HISTORY — Các kỳ quá khứ có ≥3 số trùng */}
+          {prediction?.scientific?.matchHistory && (
+            <div className="glass-panel" style={{ borderLeft: '3px solid #06b6d4' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <History size={18} color="#06b6d4" />
+                <strong style={{ fontSize: '0.95rem' }}>Các kỳ quá khứ trùng &ge; 3 số</strong>
+              </div>
+              {prediction.scientific.matchHistory.length === 0 ? (
+                <p style={{ fontSize: '0.85rem', color: '#10b981', margin: 0 }}>
+                  ✨ Không có kỳ nào trong lịch sử trùng &ge; 3 số với bộ này — đây là bộ số "mới hoàn toàn".
+                </p>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    {Object.entries(prediction.scientific.matchSummary?.byCount || {})
+                      .filter(([_, n]) => n > 0)
+                      .map(([k, n]) => (
+                        <span key={k} style={{
+                          background: parseInt(k) >= 5 ? 'rgba(239,68,68,0.15)' : parseInt(k) === 4 ? 'rgba(245,158,11,0.15)' : 'rgba(6,182,212,0.15)',
+                          color: parseInt(k) >= 5 ? '#ef4444' : parseInt(k) === 4 ? '#f59e0b' : '#06b6d4',
+                          padding: '6px 12px',
+                          borderRadius: '20px',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                        }}>
+                          {n} kỳ trùng {k} số
+                        </span>
+                      ))}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
+                    {prediction.scientific.matchHistory.slice(0, 30).map((m, idx) => {
+                      const matchedSet = new Set(m.matched);
+                      return (
+                        <div key={idx} style={{
+                          background: 'var(--surface-strong)',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          borderLeft: m.matchCount >= 5 ? '3px solid #ef4444' : m.matchCount === 4 ? '3px solid #f59e0b' : '3px solid #06b6d4',
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span>Kỳ <strong style={{ color: 'var(--text-main)' }}>#{m.draw_id}</strong> &middot; {m.date}</span>
+                            <span style={{ color: m.matchCount >= 5 ? '#ef4444' : m.matchCount === 4 ? '#f59e0b' : '#06b6d4', fontWeight: 700 }}>
+                              Trùng {m.matchCount}/{m.balls.length}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {m.balls.map((b, i) => (
+                              <span
+                                key={i}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '50%',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: matchedSet.has(b)
+                                    ? 'linear-gradient(135deg, #10b981, #06b6d4)'
+                                    : 'rgba(255,255,255,0.08)',
+                                  color: matchedSet.has(b) ? 'white' : 'var(--text-muted)',
+                                  border: matchedSet.has(b) ? 'none' : '1px solid var(--surface-border)',
+                                }}
+                              >
+                                {b}
+                              </span>
+                            ))}
+                            {m.special_ball && (
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                background: 'linear-gradient(135deg, #eab308, #f59e0b)',
+                                color: 'white',
+                              }}>{m.special_ball}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {prediction.scientific.matchHistory.length > 30 && (
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', marginBottom: 0, textAlign: 'center' }}>
+                      Còn {prediction.scientific.matchHistory.length - 30} kỳ nữa, đang ẩn để tiết kiệm không gian.
+                    </p>
+                  )}
+                </>
+              )}
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '10px', marginBottom: 0, fontStyle: 'italic' }}>
+                Bảng này KHÔNG dự đoán tương lai — chỉ cho bạn thấy lịch sử trùng lặp của bộ số được tạo.
+              </p>
             </div>
           )}
 

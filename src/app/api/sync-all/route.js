@@ -19,17 +19,36 @@ const XSKT_HEADERS = {
 };
 
 const GAMES_CONFIG = [
-    { code: '645', name: 'Mega 6/45', path: 'xsmega645', type: 'mega' },
-    { code: '655', name: 'Power 6/55', path: 'xspower', type: 'power' },
-    { code: '535', name: 'Lotto 5/35', path: 'xslotto-5-35', type: 'lotto535' },
-    { code: 'max3dpro', name: 'Max 3D Pro', path: 'xsmax3dpro', type: 'max3d' },
+    // linkPattern = unique substring of href used to find THIS game's date-link.
+    // Without scoping the selector per game, sidebar/cross-links on xskt.com.vn
+    // would pollute all games with the same drawId (e.g., everyone shows 1509,
+    // which is Mega's latest, because pages share a sidebar widget).
+    { code: '645',      name: 'Mega 6/45',  path: 'xsmega645',     type: 'mega',     linkPattern: 'xsmega645/ngay-' },
+    { code: '655',      name: 'Power 6/55', path: 'xspower',       type: 'power',    linkPattern: 'xspower/ngay-' },
+    { code: '535',      name: 'Lotto 5/35', path: 'xslotto-5-35',  type: 'lotto535', linkPattern: 'xslotto-5-35/ngay-' },
+    { code: 'max3dpro', name: 'Max 3D Pro', path: 'xsmax3dpro',    type: 'max3d',    linkPattern: 'xsmax3dpro/ngay-' },
 ];
 
-const PAGE_DELAY_MS = 200;        // reduced from 500 — xskt tolerates this fine
-const MAX_PAGES = 500;
-const REQUEST_TIMEOUT_MS = 20000;
-const TELEGRAM_EDIT_DEBOUNCE_MS = 2000; // 4 games × N edits → must stay under 1 edit/sec/chat (safety margin)
-const PAGE_CONCURRENCY = 2;       // fetch 2 pages of same game in parallel (politeness for xskt)
+const DATE_DELAY_MS = 150;          // delay between date-fetch batches
+const DATE_CONCURRENCY = 5;         // fetch 5 dates per game in parallel
+const MAX_CONSECUTIVE_EMPTY = 60;   // stop after this many consecutive empty days (covers Tet holiday + buffer)
+const MAX_DAYS_TO_WALK = 4500;      // hard upper bound — ~12 years of daily walking
+const REQUEST_TIMEOUT_MS = 12000;
+const TELEGRAM_EDIT_DEBOUNCE_MS = 2000;
+
+// Game schedules — used to skip non-draw days without HTTP calls
+// dayOfWeek: 0=Sun, 1=Mon, ..., 6=Sat
+const GAME_SCHEDULES = {
+    '645':      [3, 5, 0],  // Wed, Fri, Sun
+    '655':      [2, 4, 6],  // Tue, Thu, Sat
+    'max3dpro': [2, 4, 6],  // Tue, Thu, Sat
+    '535':      [0, 1, 2, 3, 4, 5, 6], // daily (will get 404s on non-draw days, that's OK)
+};
+
+function formatXsktDate(d) {
+    // xskt uses non-zero-padded format: "13-5-2026", "8-5-2026"
+    return `${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
+}
 
 // ============================================================================
 // TELEGRAM PROGRESS REPORTER
@@ -100,36 +119,43 @@ class TelegramReporter {
 // SCRAPE LOGIC
 // ============================================================================
 
-function parseDateFromHref($, el) {
-    const href = $(el).find('a[href*="/ngay-"]').attr('href');
-    if (!href) return null;
-    const m = href.match(/ngay-(.+)/);
-    return m ? m[1].replace(/-/g, '/') : null;
-}
+/**
+ * Parse one draw row from xskt.com.vn. CRITICAL: must scope link selector
+ * to this game's URL pattern, otherwise sidebar/cross-game links pollute
+ * the result (caused the "all games show 872/1509" bug).
+ */
+function parseDrawElement($, el, cfg) {
+    const linkSel = `a[href*="${cfg.linkPattern}"]`;
+    const dateLink = $(el).find(linkSel).first();
+    if (!dateLink.length) return null; // No game-specific link in this table → skip
 
-function parseDrawElement($, el, type) {
-    const drawIdText = $(el).find('a[href*="/ngay-"]').text().replace('#', '').trim();
-    if (!drawIdText) return null;
-    const date = parseDateFromHref($, el);
-    if (!date) return null;
+    // drawId: text inside the game-specific date-link (e.g., "#01509" → "01509")
+    const drawIdText = dateLink.text().replace('#', '').trim();
+    if (!drawIdText || !/\d/.test(drawIdText)) return null;
 
-    if (type === 'mega') {
+    // date: parsed from the href of the same scoped link
+    const href = dateLink.attr('href') || '';
+    const dateMatch = href.match(/ngay-(.+)/);
+    if (!dateMatch) return null;
+    const date = dateMatch[1].replace(/-/g, '/');
+
+    if (cfg.type === 'mega') {
         const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
         if (!balls) return null;
         return { drawId: drawIdText, date, balls };
     }
-    if (type === 'power') {
+    if (cfg.type === 'power') {
         const balls = $(el).find('.megaresult').eq(0).find('em').text().trim().split(/\s+/).join(', ');
         const special = $(el).find('.jp2 .megaresult').text().trim();
         if (!balls) return null;
         return { drawId: drawIdText, date, balls, special_ball: special };
     }
-    if (type === 'lotto535') {
+    if (cfg.type === 'lotto535') {
         const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
         if (!balls) return null;
         return { drawId: drawIdText, date, balls };
     }
-    if (type === 'max3d') {
+    if (cfg.type === 'max3d') {
         const extract = (idx) => $(el).find('tr').eq(idx).find('b').map((j, b) => $(b).text().trim().replace(/\s+/, ', ')).get().join(', ');
         return {
             drawId: drawIdText, date,
@@ -155,66 +181,118 @@ async function fetchPage(url, retries = 2) {
 }
 
 /**
- * Sync one game. Tracks:
- *   - latestDrawId  = the highest draw_id found on page 1 (= total kỳ in real life)
- *   - lowestProcessedDrawId = lowest draw_id seen so far (= "how far back" we've gone)
+ * Sync one game using DATE WALK strategy.
  *
- * Progress format: "Lotto 5/35: 240 / 2000 kỳ (+15 mới)"
- *   240 = latestDrawId - lowestProcessedDrawId + 1 (rows scanned, top-down)
- *   2000 = latestDrawId (real total in lotterie history)
+ * Why date walk: xskt.com.vn `/trang-N` doesn't actually paginate (always
+ * returns latest). The only way to get historical data is via specific date
+ * URLs like `/xsmega645/ngay-13-5-2026`.
+ *
+ * Strategy:
+ *   1. Find latest known date in DB (or use today)
+ *   2. Walk BACKWARD day by day, checking only days matching game schedule
+ *   3. Stop when N consecutive draw-days are empty (= reached game epoch)
+ *   4. For full sync: walk backward from today regardless
+ *
+ * Progress: "240 / 1509 kỳ" where 1509 = latestDrawId (= total kỳ in history)
  */
-async function syncGame(cfg, reporter, token, gameStates, lineIdx) {
+async function syncGame(cfg, reporter, token, gameStates, lineIdx, fullResync) {
     const state = gameStates[lineIdx];
     state.status = 'starting';
     state.name = cfg.name;
-    let pagesScanned = 0;
-    let latestDrawId = 0;
-    let lowestProcessedId = Infinity;
 
     const flush = () => reporter.edit(buildProgressMessage(gameStates));
 
-    // Process pages in batches of PAGE_CONCURRENCY for higher throughput
-    for (let startPage = 1; startPage <= MAX_PAGES; startPage += PAGE_CONCURRENCY) {
+    // Step 1: fetch front page to get latest drawId (used as "total kỳ" in progress)
+    let latestDrawId = 0;
+    let latestDate = null;
+    try {
+        const frontHtml = await fetchPage(`https://xskt.com.vn/${cfg.path}`);
+        const $ = cheerio.load(frontHtml);
+        const tables = $('table').filter((i, el) =>
+            $(el).find(`a[href*="${cfg.linkPattern}"]`).length > 0
+        );
+        tables.each((i, el) => {
+            const parsed = parseDrawElement($, el, cfg);
+            if (parsed) {
+                const idNum = parseInt(parsed.drawId.match(/\d+/)?.[0] || '0', 10);
+                if (idNum > latestDrawId) {
+                    latestDrawId = idNum;
+                    latestDate = parsed.date;
+                }
+            }
+        });
+    } catch (e) {
+        console.warn(`[sync-all] ${cfg.name} front-page probe failed: ${e.message}`);
+    }
+    state.latestDrawId = latestDrawId;
+    state.currentDrawId = latestDrawId; // start: have only the latest
+    await flush();
+
+    // Step 2: walk backward day-by-day
+    const schedule = new Set(GAME_SCHEDULES[cfg.code] || [0,1,2,3,4,5,6]);
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+
+    let consecutiveEmpty = 0;
+    let dateOffset = 0;
+    let lowestSeenId = latestDrawId || Infinity;
+    let consecutiveAlreadyHave = 0;
+    const ALREADY_HAVE_THRESHOLD = fullResync ? Infinity : 5; // incremental: stop once we hit existing data
+
+    while (dateOffset < MAX_DAYS_TO_WALK) {
         if (isCancelled(token)) {
             state.status = 'cancelled';
             await flush();
             return { inserted: state.inserted, cancelled: true };
         }
 
-        const pageNums = [];
-        for (let p = startPage; p < startPage + PAGE_CONCURRENCY && p <= MAX_PAGES; p++) pageNums.push(p);
+        // Collect next batch of draw-day dates
+        const batchDates = [];
+        while (batchDates.length < DATE_CONCURRENCY && dateOffset < MAX_DAYS_TO_WALK) {
+            const d = new Date(startDate);
+            d.setDate(d.getDate() - dateOffset);
+            dateOffset++;
+            if (schedule.has(d.getDay())) batchDates.push(d);
+        }
+        if (batchDates.length === 0) break;
 
-        const fetched = await Promise.allSettled(
-            pageNums.map(p => fetchPage(`https://xskt.com.vn/${cfg.path}/trang-${p}`))
-        );
+        const urls = batchDates.map(d => ({
+            url: `https://xskt.com.vn/${cfg.path}/ngay-${formatXsktDate(d)}`,
+            date: d,
+        }));
 
-        let emptyPageHit = false;
+        const fetched = await Promise.allSettled(urls.map(u => fetchPage(u.url, 1)));
+
         const allDraws = [];
-
         for (let i = 0; i < fetched.length; i++) {
-            const page = pageNums[i];
             const result = fetched[i];
             if (result.status === 'rejected') {
-                if (result.reason?.response?.status === 404) { emptyPageHit = true; continue; }
-                console.warn(`[sync-all] ${cfg.name} page ${page} failed: ${result.reason?.message}`);
+                consecutiveEmpty++;
                 continue;
             }
             const $ = cheerio.load(result.value);
-            const tables = cfg.type === 'max3d' ? $('table.max3d') : $('table.result');
-            if (tables.length === 0) { emptyPageHit = true; continue; }
-            tables.each((idx, el) => {
-                const parsed = parseDrawElement($, el, cfg.type);
+            const tables = $('table').filter((j, el) =>
+                $(el).find(`a[href*="${cfg.linkPattern}"]`).length > 0
+            );
+            let foundInThisDate = false;
+            tables.each((j, el) => {
+                const parsed = parseDrawElement($, el, cfg);
                 if (parsed) {
                     allDraws.push(parsed);
                     const idNum = parseInt(parsed.drawId.match(/\d+/)?.[0] || '0', 10);
-                    if (idNum > latestDrawId) latestDrawId = idNum;
-                    if (idNum < lowestProcessedId) lowestProcessedId = idNum;
+                    if (idNum > 0 && idNum < lowestSeenId) lowestSeenId = idNum;
+                    foundInThisDate = true;
                 }
             });
-            pagesScanned = page;
+            if (foundInThisDate) {
+                consecutiveEmpty = 0;
+            } else {
+                consecutiveEmpty++;
+            }
         }
 
-        // Bulk insert in single transaction
+        // Bulk insert in one transaction
+        let addedThisBatch = 0;
         if (allDraws.length > 0) {
             const db = getDb();
             const tx = db.transaction((rows) => {
@@ -225,34 +303,36 @@ async function syncGame(cfg, reporter, token, gameStates, lineIdx) {
                 }
                 return added;
             });
-            const added = tx(allDraws);
-            state.inserted += added;
+            addedThisBatch = tx(allDraws);
+            state.inserted += addedThisBatch;
             state.scanned += allDraws.length;
         }
 
-        // Update state for progress display
-        state.latestDrawId = latestDrawId;
-        state.currentDrawId = lowestProcessedId === Infinity ? null : lowestProcessedId;
-        state.pagesScanned = pagesScanned;
+        // For incremental sync: stop once we've encountered enough already-existing rows in a row
+        if (allDraws.length > 0 && addedThisBatch === 0) {
+            consecutiveAlreadyHave += allDraws.length;
+        } else {
+            consecutiveAlreadyHave = 0;
+        }
+
+        state.currentDrawId = lowestSeenId === Infinity ? null : lowestSeenId;
         state.status = 'running';
         await flush();
 
-        if (emptyPageHit) break;
-
-        // Early stop: if last batch added 0 new rows AND we already have data, we've caught up
-        if (state.scanned > 0 && state.inserted > 0) {
-            const lastBatchAdded = state.scanned - (state.scannedAtLastCheck || 0);
-            const lastBatchNew = state.inserted - (state.insertedAtLastCheck || 0);
-            state.scannedAtLastCheck = state.scanned;
-            state.insertedAtLastCheck = state.inserted;
-            if (lastBatchAdded > 0 && lastBatchNew === 0 && startPage > 1) {
-                state.status = 'caught-up';
-                await flush();
-                return { inserted: state.inserted, cancelled: false };
-            }
+        // Stop conditions
+        if (consecutiveEmpty >= MAX_CONSECUTIVE_EMPTY) {
+            // Reached game epoch (no more draws to find)
+            state.status = 'done';
+            await flush();
+            return { inserted: state.inserted, cancelled: false };
+        }
+        if (consecutiveAlreadyHave >= ALREADY_HAVE_THRESHOLD) {
+            state.status = 'caught-up';
+            await flush();
+            return { inserted: state.inserted, cancelled: false };
         }
 
-        await new Promise(r => setTimeout(r, PAGE_DELAY_MS));
+        await new Promise(r => setTimeout(r, DATE_DELAY_MS));
     }
 
     state.status = 'done';
@@ -331,10 +411,10 @@ export async function GET(request) {
             await reporter.edit(buildProgressMessage(gameStates));
 
             // PARALLEL: sync all 4 games concurrently. Each game has its own
-            // page-fetch loop. This ~4x speedup vs sequential since each game
-            // hits a different xskt.com.vn endpoint, no resource contention.
+            // date-walk loop. This ~4x speedup vs sequential since each game
+            // hits a different xskt.com.vn endpoint.
             const results = await Promise.allSettled(
-                GAMES_CONFIG.map((cfg, idx) => syncGame(cfg, reporter, token, gameStates, idx))
+                GAMES_CONFIG.map((cfg, idx) => syncGame(cfg, reporter, token, gameStates, idx, fullResync))
             );
 
             const summary = { total: 0 };

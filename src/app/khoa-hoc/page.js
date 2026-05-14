@@ -199,6 +199,101 @@ export default function ScienceLabPage() {
             )}
           </div>
 
+          {/* MATCH HISTORY — Các kỳ quá khứ trùng ≥3 số với bộ vừa tạo */}
+          {generated?.matchHistory && (
+            <div className="glass-panel section-spacing" style={{ borderLeft: '3px solid #06b6d4' }}>
+              <div className="panel-header">
+                <BarChart3 size={20} color="#06b6d4" />
+                <h2 className="panel-title">Đối chiếu lịch sử</h2>
+                <span className="panel-subtitle">Tổng số kỳ quá khứ có ≥ 3 số trùng với bộ vừa tạo</span>
+              </div>
+              {generated.matchHistory.length === 0 ? (
+                <p style={{ color: '#10b981', fontSize: '0.9rem', margin: 0 }}>
+                  ✨ Không có kỳ nào trong lịch sử trùng ≥ 3 số với bộ này — bộ số "mới hoàn toàn".
+                </p>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                    {Object.entries(generated.matchSummary?.byCount || {})
+                      .filter(([_, n]) => n > 0)
+                      .map(([k, n]) => (
+                        <span key={k} style={{
+                          background: parseInt(k) >= 5 ? 'rgba(239,68,68,0.15)' : parseInt(k) === 4 ? 'rgba(245,158,11,0.15)' : 'rgba(6,182,212,0.15)',
+                          color: parseInt(k) >= 5 ? '#ef4444' : parseInt(k) === 4 ? '#f59e0b' : '#06b6d4',
+                          padding: '6px 12px',
+                          borderRadius: '20px',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                        }}>
+                          {n} kỳ trùng {k} số
+                        </span>
+                      ))}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflowY: 'auto' }}>
+                    {generated.matchHistory.slice(0, 30).map((m, idx) => {
+                      const matchedSet = new Set(m.matched);
+                      return (
+                        <div key={idx} style={{
+                          background: 'var(--surface-strong)',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          borderLeft: m.matchCount >= 5 ? '3px solid #ef4444' : m.matchCount === 4 ? '3px solid #f59e0b' : '3px solid #06b6d4',
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span>Kỳ <strong style={{ color: 'var(--text-main)' }}>#{m.draw_id}</strong> · {m.date}</span>
+                            <span style={{ color: m.matchCount >= 5 ? '#ef4444' : m.matchCount === 4 ? '#f59e0b' : '#06b6d4', fontWeight: 700 }}>
+                              Trùng {m.matchCount}/{m.balls.length}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {m.balls.map((b, i) => (
+                              <span
+                                key={i}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '50%',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: matchedSet.has(b)
+                                    ? 'linear-gradient(135deg, #10b981, #06b6d4)'
+                                    : 'rgba(255,255,255,0.08)',
+                                  color: matchedSet.has(b) ? 'white' : 'var(--text-muted)',
+                                  border: matchedSet.has(b) ? 'none' : '1px solid var(--surface-border)',
+                                }}
+                              >
+                                {b}
+                              </span>
+                            ))}
+                            {m.special_ball && (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                width: '28px', height: '28px', borderRadius: '50%',
+                                fontSize: '0.72rem', fontWeight: 700,
+                                background: 'linear-gradient(135deg, #eab308, #f59e0b)', color: 'white',
+                              }}>{m.special_ball}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {generated.matchHistory.length > 30 && (
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', marginBottom: 0, textAlign: 'center' }}>
+                      Còn {generated.matchHistory.length - 30} kỳ nữa.
+                    </p>
+                  )}
+                </>
+              )}
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '10px', marginBottom: 0, fontStyle: 'italic' }}>
+                Bảng này KHÔNG dự đoán tương lai — chỉ cho bạn thấy bộ vừa tạo có lịch sử trùng lặp thế nào.
+              </p>
+            </div>
+          )}
+
           <div className="glass-panel section-spacing">
             <div className="panel-header">
               <BarChart3 size={20} color="var(--primary)" />

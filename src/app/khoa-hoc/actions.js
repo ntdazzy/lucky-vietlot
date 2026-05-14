@@ -1,6 +1,7 @@
 'use server';
-import { getLatestDraws } from '@/lib/db';
+import { getLatestDraws, getAllDraws } from '@/lib/db';
 import { getGame } from '@/lib/games';
+import { findMatchingDraws, summarizeMatches } from '@/lib/match-history';
 
 // ============================================================================
 // STRATEGY DEFINITIONS — Each strategy returns N predicted ball numbers
@@ -277,8 +278,17 @@ export async function generateWithWinner(game, strategyId, useAllDraws = false, 
   }
 
   const predicted = strategy.fn(allDraws, game, ballCount);
+  const sorted = predicted.sort((a, b) => parseInt(a) - parseInt(b));
+
+  // Match history — show user every past draw that overlaps ≥3 with this pick
+  const fullHistory = getAllDraws(game);
+  const matches = findMatchingDraws(sorted, fullHistory, 3);
+  const matchSummary = summarizeMatches(matches, fullHistory.length, gameConfig.ballCount);
+
   return {
-    main: predicted.sort((a, b) => parseInt(a) - parseInt(b)),
+    main: sorted,
     strategy: { id: strategy.id, name: strategy.name, emoji: strategy.emoji },
+    matchHistory: matches,
+    matchSummary,
   };
 }
