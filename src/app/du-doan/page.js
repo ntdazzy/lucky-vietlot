@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { generatePrediction, fetchHistory, clearHistory as clearHistoryAction } from './actions';
+import { generatePrediction, generateSharpPrediction, fetchHistory, clearHistory as clearHistoryAction } from './actions';
 import { getGameNames } from '@/lib/games';
-import { Sparkles, Target, Layers, BarChart3, RefreshCcw, History, Trash2, Clock, Zap, Database, FlaskConical } from 'lucide-react';
+import { Sparkles, Target, Layers, BarChart3, RefreshCcw, History, Trash2, Clock, Zap, Database, FlaskConical, AlertTriangle, Shield, Crosshair } from 'lucide-react';
 
 const GAME_NAMES = getGameNames();
 const GAME_KEYS = ['645', '655', '535', 'max3dpro'];
@@ -16,6 +16,8 @@ export default function PredictionPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [useAllDraws, setUseAllDraws] = useState(false);
   const [bao, setBao] = useState('standard');
+  // Sharp v5 mode — anti-popularity + coverage optimization
+  const [sharpMode, setSharpMode] = useState(true);
 
   const loadHistory = useCallback(async () => {
     const h = await fetchHistory(game);
@@ -24,11 +26,13 @@ export default function PredictionPage() {
 
   const generate = useCallback(async () => {
     setLoading(true);
-    const result = await generatePrediction(game, useAllDraws, bao);
+    const result = sharpMode
+      ? await generateSharpPrediction(game)
+      : await generatePrediction(game, useAllDraws, bao);
     setPrediction(result);
     if (result) await loadHistory();
     setLoading(false);
-  }, [game, loadHistory, useAllDraws, bao]);
+  }, [game, loadHistory, useAllDraws, bao, sharpMode]);
 
   useEffect(() => {
     loadHistory();
@@ -76,19 +80,49 @@ export default function PredictionPage() {
       ) : (
         <div className="prediction-content">
 
-          {/* DATA SOURCE & BAO TOGGLE */}
+          {/* ALGORITHM MODE — Sharp v5 vs Standard */}
+          <div className="glass-panel" style={{ borderLeft: '3px solid #a855f7' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <Crosshair size={18} color="#a855f7" />
+              <strong style={{ fontSize: '0.95rem' }}>Thuật toán</strong>
+            </div>
+            <div className="data-source-toggle">
+              <button
+                onClick={() => setSharpMode(true)}
+                className={`data-source-btn${sharpMode ? ' active' : ''}`}
+              >
+                <Shield size={16} />
+                <span>Sharp v5 (Anti-Share)</span>
+              </button>
+              <button
+                onClick={() => setSharpMode(false)}
+                className={`data-source-btn${!sharpMode ? ' active' : ''}`}
+              >
+                <Zap size={16} />
+                <span>Ensemble Cổ Điển</span>
+              </button>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '10px', lineHeight: 1.5 }}>
+              {sharpMode
+                ? '🛡️ Tối ưu hoá để giữ phần lớn jackpot nếu trúng — tránh các bộ số nhiều người chọn (sinh nhật, số "may mắn", dãy liên tiếp). KHÔNG tăng xác suất trúng.'
+                : '⚡ Ensemble 3 chiến lược (hot/balanced/cold) + Markov + backtest. Phù hợp để khám phá pattern lịch sử.'}
+            </p>
+          </div>
+
+          {/* DATA SOURCE & BAO TOGGLE — ẩn khi Sharp mode (không dùng dữ liệu kiểu cũ) */}
+          {!sharpMode && (
           <div className="glass-panel data-source-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'center' }}>
               <div className="data-source-toggle">
-                <button 
-                  onClick={() => setUseAllDraws(false)} 
+                <button
+                  onClick={() => setUseAllDraws(false)}
                   className={`data-source-btn${!useAllDraws ? ' active' : ''}`}
                 >
                   <Clock size={16} />
                   <span>200 kỳ gần nhất</span>
                 </button>
-                <button 
-                  onClick={() => setUseAllDraws(true)} 
+                <button
+                  onClick={() => setUseAllDraws(true)}
                   className={`data-source-btn${useAllDraws ? ' active' : ''}`}
                 >
                   <Database size={16} />
@@ -122,16 +156,100 @@ export default function PredictionPage() {
                 </select>
               </div>
             </div>
-            {prediction && (
+            {prediction && !sharpMode && (
               <div className="data-source-info">
                 <Zap size={14} />
                 <span>
-                  Đang phân tích <strong>{prediction.drawsAnalyzed}</strong> kỳ quay | 
+                  Đang phân tích <strong>{prediction.drawsAnalyzed}</strong> kỳ quay |
                   Ensemble: {prediction.candidatesFound} ứng viên từ {prediction.attempts} lượt thử
                 </span>
               </div>
             )}
           </div>
+          )}
+
+          {/* REALITY CHECK — luôn hiển thị, là điểm trung thực của app */}
+          {prediction?.realityCheck?.ev && (
+            <div className="glass-panel" style={{ borderLeft: '3px solid #ef4444', background: 'rgba(239, 68, 68, 0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <AlertTriangle size={18} color="#ef4444" />
+                <strong style={{ fontSize: '0.95rem' }}>Kiểm Tra Thực Tế (Toán Học)</strong>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+                <div className="stat-card">
+                  <div className="stat-card__label">Xác suất trúng JP</div>
+                  <div className="stat-card__value" style={{ color: '#ef4444', fontSize: '0.95rem' }}>
+                    {prediction.realityCheck.jackpotOdds || '—'}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-card__label">Kỳ vọng mỗi vé</div>
+                  <div className="stat-card__value" style={{ color: '#ef4444', fontSize: '0.95rem' }}>
+                    −{Math.round(prediction.realityCheck.ev.expectedLossPerTicket).toLocaleString('vi-VN')}đ
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-card__label">Tỷ lệ thu hồi</div>
+                  <div className="stat-card__value" style={{ color: '#f59e0b', fontSize: '0.95rem' }}>
+                    {Math.round(prediction.realityCheck.ev.returnRate * 100)}%
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-card__label">House edge</div>
+                  <div className="stat-card__value" style={{ color: '#ef4444', fontSize: '0.95rem' }}>
+                    {Math.round(prediction.realityCheck.ev.houseEdge * 100)}%
+                  </div>
+                </div>
+              </div>
+              {prediction.realityCheck.verdict?.verdict && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
+                  💡 {prediction.realityCheck.verdict.verdict}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* SHARP v5 METRICS */}
+          {prediction?.sharpMetrics && (
+            <div className="glass-panel" style={{ borderLeft: '3px solid #10b981' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <Shield size={18} color="#10b981" />
+                <strong style={{ fontSize: '0.95rem' }}>Sharp v5 — Anti-Share Metrics</strong>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+                <div className="stat-card">
+                  <div className="stat-card__label">Share Multiplier</div>
+                  <div className="stat-card__value" style={{ color: prediction.sharpMetrics.expectedShareMultiplier < 1 ? '#10b981' : '#f59e0b' }}>
+                    {prediction.sharpMetrics.expectedShareMultiplier}×
+                  </div>
+                  <div className="stat-card__sub">Càng thấp càng tốt</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-card__label">Số thấp (≤31)</div>
+                  <div className="stat-card__value" style={{ color: prediction.breakdown.lowCount <= 3 ? '#10b981' : '#f59e0b' }}>
+                    {prediction.breakdown.lowCount}/{prediction.main.length}
+                  </div>
+                  <div className="stat-card__sub">Tránh birthday bias</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-card__label">Avg Popularity</div>
+                  <div className="stat-card__value" style={{ color: prediction.sharpMetrics.avgPopularityScore < 1.1 ? '#10b981' : '#f59e0b' }}>
+                    {prediction.sharpMetrics.avgPopularityScore}
+                  </div>
+                  <div className="stat-card__sub">&lt; 1.0 = bộ số "lạnh đám đông"</div>
+                </div>
+              </div>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                {prediction.sharpMetrics.shareVsTypical}
+              </p>
+              {prediction.calibration?.significance && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', marginBottom: 0, fontStyle: 'italic' }}>
+                  📊 Backtest signal: z-score {prediction.calibration.significance.zScore} —
+                  {prediction.calibration.significance.verdict}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* MAIN PREDICTION */}
           <div className="glass-panel glass-panel--relative text-center">
@@ -159,7 +277,7 @@ export default function PredictionPage() {
                 {prediction.breakdown && (
                   <div className="breakdown-grid mb-md">
                     {[
-                      { label: 'Tổng', value: prediction.breakdown.sum, sub: `${prediction.sumRange[0]}–${prediction.sumRange[1]}`, color: '#3b82f6' },
+                      { label: 'Tổng', value: prediction.breakdown.sum, sub: prediction.sumRange ? `${prediction.sumRange[0]}–${prediction.sumRange[1]}` : null, color: '#3b82f6' },
                       { label: 'Chẵn/Lẻ', value: `${prediction.breakdown.evens}/${prediction.breakdown.odds}`, color: '#10b981' },
                       { label: 'Độ rộng', value: prediction.breakdown.spread, color: '#f59e0b' },
                       { label: 'Vùng số', value: prediction.breakdown.decadeCount, color: '#a855f7' },

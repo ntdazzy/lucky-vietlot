@@ -6,6 +6,8 @@ import {
   deletePredictionById as dbDeleteById, getLatestDraws, backtestStrategy
 } from '@/lib/db';
 import { getGame } from '@/lib/games';
+import { generateSharpPick, generateSharpBao } from '@/lib/sharp-algorithm';
+import { expectedValue, baoMath, getHonestVerdict, backtestSignificance } from '@/lib/reality-check';
 
 const TIER_CONFIGS = {
   6: [[3, 2, 1], [2, 3, 1], [2, 2, 2], [3, 1, 2], [1, 3, 2]],
@@ -366,7 +368,12 @@ export async function generatePrediction(game, useAllDraws = false, bao = null) 
       spread: sorted[ballCount - 1] - sorted[0],
       decadeCount: new Set(sorted.map(n => Math.floor((n - 1) / 10))).size,
       consecutive: countConsecutivePairs(sorted),
-    }
+    },
+    realityCheck: {
+      ev: expectedValue(game),
+      verdict: getHonestVerdict(game),
+      jackpotOdds: game === '645' ? '1 / 8,145,060' : game === '655' ? '1 / 28,989,675' : '1 / 324,632',
+    },
   };
 
   savePredictionHistory(game, result);
@@ -392,4 +399,121 @@ export async function clearHistory(game) {
 
 export async function deleteHistoryItem(id) {
   return dbDeleteById(id);
+}
+
+// ============================================================================
+// SHARP v5 — Anti-popularity + coverage-optimized prediction
+// ----------------------------------------------------------------------------
+// Different goal from generatePrediction(): instead of trying to "predict"
+// numbers (mathematically impossible for independent draws), this maximizes
+// E[payout | jackpot] by avoiding sets that many humans pick.
+//
+// Always paired with a reality-check payload so the UI surfaces actual odds.
+// ============================================================================
+
+export async function generateSharpPrediction(game, options = {}) {
+  const gameConfig = getGame(game);
+  if (!gameConfig || !gameConfig.ballCount) return null;
+
+  const stats = getStats(game);
+  if (stats.length === 0) return null;
+  const specialStats = getSpecialBallStats(game);
+
+  const sharpResult = generateSharpPick({
+    game,
+    gameConfig,
+    stats,
+    specialStats,
+    salt: options.salt || String(Date.now()),
+  });
+
+  // Run a backtest of a simple frequency strategy as a calibration signal,
+  // then check whether its observed "lift" is even statistically significant.
+  let calibration = null;
+  try {
+    const simpleStrategy = (history) => {
+      const freq = {};
+      for (const d of history.slice(-200)) {
+        if (!d.balls) continue;
+        d.balls.split(',').map(b => b.trim()).forEach(b => {
+          freq[b] = (freq[b] || 0) + 1;
+        });
+      }
+      return Object.entries(freq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, gameConfig.ballCount)
+        .map(([n]) => n);
+    };
+    const bt = backtestStrategy(game, simpleStrategy, 100);
+    if (bt) {
+      const sig = backtestSignificance(game, bt.avgMatch, bt.tested);
+      calibration = { ...bt, significance: sig };
+    }
+  } catch (e) {
+    console.warn('[sharp] backtest failed:', e.message);
+  }
+
+  const realityCheck = {
+    ev: expectedValue(game),
+    verdict: getHonestVerdict(game),
+    jackpotOdds: sharpResult.disclaimers.probabilityOfJackpot,
+  };
+
+  // Save to history (same schema as standard prediction)
+  savePredictionHistory(game, {
+    main: sharpResult.main,
+    special: sharpResult.special,
+    breakdown: sharpResult.breakdown,
+    confidence: 0,
+    attempts: sharpResult.attempts,
+  });
+
+  return {
+    algorithm: 'sharp-v5',
+    ...sharpResult,
+    calibration,
+    realityCheck,
+  };
+}
+
+export async function generateSharpBaoPick(game, baoSize, options = {}) {
+  const gameConfig = getGame(game);
+  if (!gameConfig || !gameConfig.ballCount) return null;
+  const stats = getStats(game);
+  if (stats.length === 0) return null;
+
+  const sharpBao = generateSharpBao({
+    game,
+    gameConfig,
+    stats,
+    baoSize: parseInt(baoSize, 10),
+    salt: options.salt || String(Date.now()),
+  });
+
+  return {
+    algorithm: 'sharp-v5-bao',
+    ...sharpBao,
+    realityCheck: {
+      ev: expectedValue(game),
+      verdict: getHonestVerdict(game),
+      baoMath: baoMath(game, parseInt(baoSize, 10)),
+    },
+  };
+}
+
+export async function getGameRealityCheck(game) {
+  return {
+    ev: expectedValue(game),
+    verdict: getHonestVerdict(game),
+    bao: {
+      bao5:  baoMath(game, 5),
+      bao7:  baoMath(game, 7),
+      bao8:  baoMath(game, 8),
+      bao9:  baoMath(game, 9),
+      bao10: baoMath(game, 10),
+      bao12: baoMath(game, 12),
+      bao15: baoMath(game, 15),
+      bao18: baoMath(game, 18),
+    },
+  };
 }

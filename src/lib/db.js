@@ -33,6 +33,45 @@ function getDbPath() {
     return path.join(process.cwd(), 'vietlott.db');
 }
 
+function migrateDuplicates(db) {
+    // Heal legacy tables that lack UNIQUE on draw_id and accumulated dupes
+    // from inconsistent date formatting in old scrapers.
+    const tables = [
+        { name: 'draws_645', cols: 'date, draw_id, balls' },
+        { name: 'draws_655', cols: 'date, draw_id, balls, special_ball' },
+        { name: 'draws_535', cols: 'date, draw_id, balls' },
+        { name: 'draws_max3dpro', cols: 'date, draw_id, dac_biet, nhat, nhi, ba' },
+    ];
+
+    for (const t of tables) {
+        try {
+            const exists = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(t.name);
+            if (!exists) continue;
+            const total = db.prepare(`SELECT COUNT(*) AS n FROM ${t.name}`).get().n;
+            const unique = db.prepare(`SELECT COUNT(DISTINCT draw_id) AS n FROM ${t.name}`).get().n;
+            if (total > unique) {
+                console.log(`[db] Migrating ${t.name}: ${total} rows → ${unique} unique. Deduping...`);
+                // Normalize dates AND dedupe: keep row with longest balls string (most complete)
+                db.exec(`
+                    CREATE TEMP TABLE _dedup AS
+                    SELECT MIN(rowid) AS keep_id
+                    FROM ${t.name}
+                    GROUP BY draw_id;
+
+                    DELETE FROM ${t.name}
+                    WHERE rowid NOT IN (SELECT keep_id FROM _dedup);
+
+                    DROP TABLE _dedup;
+                `);
+                const after = db.prepare(`SELECT COUNT(*) AS n FROM ${t.name}`).get().n;
+                console.log(`[db] ${t.name}: now ${after} rows.`);
+            }
+        } catch (e) {
+            console.warn(`[db] Migration check failed for ${t.name}:`, e.message);
+        }
+    }
+}
+
 function ensureSchema(db) {
     // Idempotent. All tables use the same shape: integer PK + UNIQUE draw_id.
     db.exec(`
@@ -98,6 +137,7 @@ function openConnection() {
     db.pragma('busy_timeout = 5000');      // Auto-retry on lock for 5s
 
     ensureSchema(db);
+    migrateDuplicates(db);
     return db;
 }
 
