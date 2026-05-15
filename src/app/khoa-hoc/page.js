@@ -303,6 +303,29 @@ export default function ScienceLabPage() {
               </span>
             </div>
 
+            <div style={{
+              background: 'rgba(168, 85, 247, 0.08)',
+              borderLeft: '3px solid #a855f7',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              fontSize: '0.82rem',
+              color: 'var(--text-muted)',
+              lineHeight: 1.6,
+            }}>
+              <strong style={{ color: 'var(--text-main)' }}>💡 Cách đọc bảng này:</strong>
+              <br />
+              • <strong>TB trúng</strong>: trung bình mỗi kỳ thuật toán đoán được bao nhiêu số (max = {data.winner?.testedDraws ? '6' : '6'})
+              <br />
+              • <strong>vs ngẫu nhiên</strong>: hơn/kém so với chọn 6 số bất kỳ. Số kỳ vọng ngẫu nhiên = {data.winner?.expectedRandom || '~0.8'}
+              <br />
+              • <strong>3+/{data.testWindow}</strong>: trong {data.testWindow} kỳ test, có bao nhiêu lần thuật toán trúng ≥ 3 số
+              <br />
+              <span style={{ color: '#f59e0b' }}>
+                ⚠️ Mọi chênh lệch dưới ±15% đều nằm trong sai số thống kê — không có ý nghĩa thực tế.
+              </span>
+            </div>
+
             <div className="strategy-leaderboard">
               {data.results.map((s, idx) => (
                 <div key={s.id} className={`strategy-row${idx === 0 ? ' strategy-row-winner' : ''}`}>

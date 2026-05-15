@@ -2,6 +2,8 @@ import { getStats, getLatestDraws } from '@/lib/db';
 import { getGameNames } from '@/lib/games';
 import { Flame, Snowflake, TrendingUp, BarChart2 } from 'lucide-react';
 import FreqChart from '@/components/Chart';
+import GameChip from '@/components/GameChip';
+import HomeAdminToggle from '@/components/HomeAdminToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,9 +25,18 @@ export default async function Home({ searchParams }) {
 
         <div className="game-picker">
           {['645', '655', '535', 'max3dpro'].map(g => (
-            <a key={g} href={`/?game=${g}`} className={`btn-game${game === g ? ' active' : ''}`}>{gameNames[g]}</a>
+            <a
+              key={g}
+              href={`/?game=${g}`}
+              className={`game-pick-link${game === g ? ' is-active' : ''}`}
+            >
+              <GameChip game={g} size="md" variant={game === g ? 'solid' : 'soft'} />
+            </a>
           ))}
         </div>
+
+        {/* Admin tools — collapsed by default, expand for sync/update/DB */}
+        <HomeAdminToggle />
       </div>
 
       {game !== 'max3dpro' && (

@@ -4,6 +4,217 @@
    Spacing scale: 4, 8, 12, 16, 20, 24, 32, 40, 48
    ========================================================================== */
 
+/* Mobile-first reset for select dropdowns: prevent overflow on small screens */
+.custom-select-wrapper {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.custom-select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Stat card touch-friendly sizing on small screens */
+@media (max-width: 380px) {
+  .stat-card {
+    padding: 10px 8px;
+  }
+  .stat-card__value {
+    font-size: 1rem;
+  }
+  .stat-card__label {
+    font-size: 0.65rem;
+  }
+}
+
+/* Match history items — make match-result cards properly responsive */
+.match-card {
+  background: var(--surface-strong);
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.match-card__header {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.match-card__balls {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.match-ball {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.match-ball--hit {
+  background: linear-gradient(135deg, #10b981, #06b6d4);
+  color: white;
+}
+.match-ball--miss {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-muted);
+  border: 1px solid var(--surface-border);
+}
+.match-ball--special {
+  background: linear-gradient(135deg, #eab308, #f59e0b);
+  color: white;
+}
+
+/* Match history list scroll container */
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile-friendly sticky regenerate button option */
+.btn-sticky-mobile {
+  position: sticky;
+  bottom: 16px;
+  z-index: 10;
+  box-shadow: 0 4px 20px rgba(255, 42, 95, 0.4);
+}
+
+/* Prevent horizontal scroll on entire page (mobile common issue) */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Game-picker link wrapper for GameChip — transparent, no double-pill */
+.game-pick-link {
+  display: inline-block;
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 2px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.game-pick-link:hover {
+  transform: translateY(-2px);
+}
+.game-pick-link.is-active {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15), 0 4px 18px rgba(0, 0, 0, 0.25);
+}
+.game-pick-link button,
+.game-pick-link {
+  font-family: inherit;
+}
+
+/* No underline on call-to-action Links rendered as buttons */
+.btn-primary, .btn-game, .game-pick-link, a.btn-primary {
+  text-decoration: none !important;
+}
+.btn-primary u, .btn-primary span { text-decoration: none; }
+
+/* Confetti animation — used by PrizeNotification fullscreen variant */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================
+   WINNING CARD STYLES — used by /ve-cua-toi check cards
+   ========================================================================== */
+
+@keyframes jackpot-shine {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes jackpot-glow {
+  0%, 100% { box-shadow: 0 0 24px rgba(251, 191, 36, 0.35), inset 0 0 12px rgba(255,255,255,0.08); }
+  50%      { box-shadow: 0 0 38px rgba(251, 191, 36, 0.6),  inset 0 0 16px rgba(255,255,255,0.15); }
+}
+
+/* JACKPOT — full match. Higher specificity so it beats .glass-panel rules. */
+.glass-panel.win-card-jackpot,
+.win-card-jackpot {
+  background: linear-gradient(120deg, #fbbf24 0%, #ef4444 35%, #a855f7 70%, #fbbf24 100%) !important;
+  background-size: 300% 300% !important;
+  animation: jackpot-shine 6s ease infinite, jackpot-glow 3s ease infinite !important;
+  color: white !important;
+  border: 2px solid rgba(251, 191, 36, 0.7) !important;
+}
+
+/* JACKPOT 2 — purple/pink/gold */
+.glass-panel.win-card-jp2,
+.win-card-jp2 {
+  background: linear-gradient(120deg, #a855f7 0%, #ec4899 50%, #fbbf24 100%) !important;
+  background-size: 200% 200% !important;
+  animation: jackpot-shine 7s ease infinite !important;
+  color: white !important;
+  border: 2px solid rgba(168, 85, 247, 0.6) !important;
+  box-shadow: 0 0 30px rgba(168, 85, 247, 0.4) !important;
+}
+
+.glass-panel.win-card-first,
+.win-card-first {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(245, 158, 11, 0.18)) !important;
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.2) !important;
+}
+
+.glass-panel.win-card-second,
+.win-card-second {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(234, 179, 8, 0.15)) !important;
+  border: 1px solid rgba(245, 158, 11, 0.35) !important;
+}
+
+.glass-panel.win-card-third,
+.win-card-third {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 182, 212, 0.12)) !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+
+/* Highlighted ball in a check (the user's number that hit) */
+.ball-hit {
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #fbbf24 60%, #f59e0b 100%) !important;
+  color: #0f172a !important;
+  border-color: #fbbf24 !important;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.7), 2px 4px 10px rgba(0,0,0,0.2) !important;
+}
+
+/* Ticket card shell */
+.ticket-card {
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  transition: transform 0.2s ease;
+}
+.ticket-card:hover {
+  transform: translateY(-2px);
+}
+
+
 
 /* --------------------------------------------------------------------------
    1. CSS CUSTOM PROPERTIES

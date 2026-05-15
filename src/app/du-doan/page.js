@@ -1,8 +1,10 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { generatePrediction, generateSharpPrediction, fetchHistory, clearHistory as clearHistoryAction } from './actions';
 import { getGameNames } from '@/lib/games';
-import { Sparkles, Target, Layers, BarChart3, RefreshCcw, History, Trash2, Clock, Zap, Database, FlaskConical, AlertTriangle, Shield, Crosshair } from 'lucide-react';
+import GameChip from '@/components/GameChip';
+import { Sparkles, Target, Layers, BarChart3, RefreshCcw, History, Trash2, Clock, Zap, Database, FlaskConical, AlertTriangle, Shield, Crosshair, Lock, CheckCircle2 } from 'lucide-react';
 
 const GAME_NAMES = getGameNames();
 const GAME_KEYS = ['645', '655', '535', 'max3dpro'];
@@ -31,6 +33,73 @@ export default function PredictionPage() {
   // Sharp v5 mode — anti-popularity + coverage optimization
   const [sharpMode, setSharpMode] = useState(true);
 
+  // Confirm-ticket state
+  const [confirming, setConfirming] = useState(false);
+  const [confirmedTicket, setConfirmedTicket] = useState(null);
+  const [confirmedTickets, setConfirmedTickets] = useState([]);
+  const [lockForDraws, setLockForDraws] = useState(1); // 1..10
+
+  const loadConfirmedTickets = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/tickets/list?game=${game}&limit=20`, { cache: 'no-store' });
+      const data = await r.json();
+      if (data.success) setConfirmedTickets(data.tickets);
+    } catch {}
+  }, [game]);
+
+  const handleConfirmTicket = useCallback(async () => {
+    if (!prediction || confirming) return;
+    setConfirming(true);
+    try {
+      const r = await fetch('/api/tickets/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          game,
+          mainBalls: prediction.main,
+          specialBall: prediction.special,
+          algorithm: prediction.algorithm,
+          breakdown: prediction.breakdown,
+          lockForDraws,
+        }),
+      });
+      const data = await r.json();
+      if (data.success) {
+        setConfirmedTicket(data.ticket);
+        await loadConfirmedTickets();
+      } else {
+        alert(`Lỗi: ${data.error || 'Không thể chốt'}`);
+      }
+    } catch (e) {
+      alert(`Lỗi mạng: ${e.message}`);
+    } finally {
+      setConfirming(false);
+    }
+  }, [prediction, game, confirming, loadConfirmedTickets, lockForDraws]);
+
+  const handleCloneTicket = useCallback(async (sourceTicketId, lockN = 1) => {
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      const r = await fetch('/api/tickets/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceTicketId, lockForDraws: lockN }),
+      });
+      const data = await r.json();
+      if (data.success) {
+        await loadConfirmedTickets();
+        return data.ticket;
+      } else {
+        alert(`Lỗi: ${data.error || 'Không thể chốt lại'}`);
+      }
+    } catch (e) {
+      alert(`Lỗi mạng: ${e.message}`);
+    } finally {
+      setConfirming(false);
+    }
+  }, [confirming, loadConfirmedTickets]);
+
   const loadHistory = useCallback(async () => {
     const h = await fetchHistory(game);
     setHistory(h);
@@ -48,8 +117,14 @@ export default function PredictionPage() {
 
   useEffect(() => {
     loadHistory();
+    loadConfirmedTickets();
     generate();
-  }, [generate, loadHistory]);
+  }, [generate, loadHistory, loadConfirmedTickets]);
+
+  // Reset confirmedTicket banner when generating a new pick
+  useEffect(() => {
+    setConfirmedTicket(null);
+  }, [prediction?.main?.join(',')]);
 
   const handleClearHistory = async () => {
     await clearHistoryAction(game);
@@ -74,9 +149,9 @@ export default function PredictionPage() {
             <button
               key={g}
               onClick={() => setGame(g)}
-              className={`btn-game${game === g ? ' active' : ''}`}
+              className={`game-pick-link${game === g ? ' is-active' : ''}`}
             >
-              {GAME_NAMES[g]}
+              <GameChip game={g} size="md" variant={game === g ? 'solid' : 'soft'} />
             </button>
           ))}
         </div>
@@ -140,21 +215,21 @@ export default function PredictionPage() {
                   onChange={(e) => setBao(e.target.value)}
                   className="custom-select"
                 >
-                  <option value="standard">Vé thường ({gameConfigBallCount(game)} số)</option>
+                  <option value="standard">Vé thường — {gameConfigBallCount(game)} số</option>
                   {(game === '645' || game === '655') && !sharpMode && (
-                    <option value="5">Bao 5 (chọn 5 số, hệ thống ghép số 6)</option>
+                    <option value="5">Bao 5 — 40 vé</option>
                   )}
                   {(game === '645' || game === '655') && (
                     <>
                       {[7, 8, 9, 10, 11, 12, 13, 14, 15, 18].map(b => (
-                        <option key={b} value={b}>Bao {b} (chọn {b} số, sinh {comboCount(b, 6)} vé)</option>
+                        <option key={b} value={b}>Bao {b} — {comboCount(b, 6)} vé</option>
                       ))}
                     </>
                   )}
                   {game === '535' && (
                     <>
                       {[6, 7, 8, 9, 10].map(b => (
-                        <option key={b} value={b}>Bao {b} (chọn {b} số, sinh {comboCount(b, 5)} vé)</option>
+                        <option key={b} value={b}>Bao {b} — {comboCount(b, 5)} vé</option>
                       ))}
                     </>
                   )}
@@ -486,13 +561,242 @@ export default function PredictionPage() {
                   </div>
                 )}
 
-                {/* REGENERATE */}
-                <button onClick={generate} className="btn-primary btn-generate">
-                  <RefreshCcw size={20} /> TẠO BỘ SỐ MỚI
-                </button>
+                {/* LOCK-FOR PICKER */}
+                {!confirmedTicket && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexWrap: 'wrap',
+                    gap: '10px',
+                    marginTop: '8px',
+                    padding: '10px 14px',
+                    background: 'var(--surface-strong)',
+                    borderRadius: '10px',
+                    fontSize: '0.85rem',
+                  }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Chốt bộ này cho:</span>
+                    <select
+                      value={lockForDraws}
+                      onChange={e => setLockForDraws(parseInt(e.target.value, 10))}
+                      className="custom-select"
+                      style={{ padding: '6px 28px 6px 12px', minHeight: '36px', fontSize: '0.9rem' }}
+                    >
+                      {[1, 2, 3, 5, 7, 10].map(n => (
+                        <option key={n} value={n}>{n} kỳ {n === 1 ? '(kỳ kế)' : 'tới'}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* ACTION BUTTONS */}
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
+                  <button
+                    onClick={generate}
+                    className="btn-primary btn-generate"
+                    style={{ flex: '1 1 200px' }}
+                    disabled={confirming}
+                  >
+                    <RefreshCcw size={18} /> Tạo bộ mới
+                  </button>
+                  <button
+                    onClick={handleConfirmTicket}
+                    disabled={confirming || !!confirmedTicket}
+                    style={{
+                      flex: '1 1 200px',
+                      padding: '14px',
+                      fontSize: '1.05rem',
+                      fontWeight: 700,
+                      borderRadius: '12px',
+                      border: 'none',
+                      cursor: confirmedTicket ? 'default' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      background: confirmedTicket
+                        ? 'linear-gradient(135deg, #10b981, #06b6d4)'
+                        : 'linear-gradient(135deg, #eab308, #f59e0b)',
+                      color: 'white',
+                      boxShadow: confirmedTicket
+                        ? '0 4px 16px rgba(16, 185, 129, 0.4)'
+                        : '0 4px 16px rgba(234, 179, 8, 0.4)',
+                      opacity: confirming ? 0.7 : 1,
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {confirming ? '⏳ Đang chốt...'
+                      : confirmedTicket ? <><CheckCircle2 size={18} /> Đã chốt vé #{confirmedTicket.id}</>
+                      : <><Lock size={18} /> Chốt cho {lockForDraws} kỳ</>
+                    }
+                  </button>
+                </div>
+                {confirmedTicket && (
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '12px', textAlign: 'center', lineHeight: 1.5 }}>
+                    ✅ Đã lưu vé cho <strong>{confirmedTicket.lock_for_draws || 1} kỳ tới</strong>. Hệ thống sẽ tự đối chiếu khi có kết quả.
+                    <br />
+                    <Link href={`/ket-qua/${confirmedTicket.id}`} style={{ color: 'var(--primary)' }}>Xem chi tiết vé →</Link>
+                  </p>
+                )}
               </>
             ) : null}
           </div>
+
+          {/* VÉ ĐÃ CHỐT — danh sách + check history per ticket */}
+          {confirmedTickets.length > 0 && (
+            <div className="glass-panel" style={{ borderLeft: '3px solid #eab308' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <Lock size={18} color="#eab308" />
+                <strong style={{ fontSize: '0.95rem' }}>Vé đã chốt ({confirmedTickets.length})</strong>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto' }}>
+                {confirmedTickets.map(t => {
+                  const isPending = t.status === 'pending';
+                  const won = t.bestPrize && t.bestPrize.id !== 'none';
+                  const tierColor = t.bestPrize?.color || (isPending ? '#eab308' : '#64748b');
+                  return (
+                    <div
+                      key={t.id}
+                      style={{
+                        background: 'var(--surface-strong)',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        borderLeft: `3px solid ${tierColor}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '6px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                          Vé #{t.id} · <GameChip game={t.game} size="sm" variant="soft" />
+                          <span>{t.confirmedAt}</span>
+                          {t.parentTicketId && <span style={{ color: '#06b6d4' }}>· 🔁 từ #{t.parentTicketId}</span>}
+                        </span>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          color: tierColor,
+                          background: `${tierColor}22`,
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                        }}>
+                          {won ? `${t.bestPrize.emoji} ${t.bestPrize.label}`
+                            : isPending ? `⏳ ${t.drawsChecked}/${t.lockForDraws} kỳ`
+                            : '➖ Không trúng'}
+                        </span>
+                      </div>
+
+                      <Link href={`/ket-qua/${t.id}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: t.checks?.length ? '8px' : 0 }}>
+                          {t.mainBalls.map((b, i) => {
+                            const isHitInAnyDraw = t.checks?.some(c => c.matched.includes(b));
+                            return (
+                              <span key={i} style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                background: isHitInAnyDraw
+                                  ? 'linear-gradient(135deg, #10b981, #06b6d4)'
+                                  : 'rgba(255,255,255,0.08)',
+                                color: isHitInAnyDraw ? 'white' : 'var(--text-muted)',
+                                border: isHitInAnyDraw ? 'none' : '1px solid var(--surface-border)',
+                              }}>{b}</span>
+                            );
+                          })}
+                          {t.specialBall && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              width: '28px', height: '28px', borderRadius: '50%',
+                              fontSize: '0.72rem', fontWeight: 700,
+                              background: 'linear-gradient(135deg, #eab308, #f59e0b)', color: 'white',
+                            }}>{t.specialBall}</span>
+                          )}
+                        </div>
+                      </Link>
+
+                      {/* Per-draw check timeline */}
+                      {t.checks && t.checks.length > 0 && (
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                          {t.checks.map((c, ci) => (
+                            <span key={ci} style={{
+                              fontSize: '0.7rem',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              background: c.prize?.id && c.prize.id !== 'none'
+                                ? `${c.prize.color}22`
+                                : 'rgba(255,255,255,0.04)',
+                              color: c.prize?.id && c.prize.id !== 'none' ? c.prize.color : 'var(--text-muted)',
+                              border: c.simulated ? '1px dashed var(--surface-border)' : '1px solid transparent',
+                            }} title={c.simulated ? 'Kết quả mô phỏng (test)' : 'Kết quả thực tế'}>
+                              #{c.drawId} · {c.matchCount}/{t.mainBalls.length}
+                              {c.prize?.id && c.prize.id !== 'none' && ` ${c.prize.emoji}`}
+                              {c.simulated && ' 🧪'}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Actions row */}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                        <button
+                          onClick={() => handleCloneTicket(t.id, 1)}
+                          disabled={confirming}
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--surface-border)',
+                            background: 'rgba(6,182,212,0.1)',
+                            color: '#06b6d4',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title="Chốt lại bộ số này cho kỳ tới"
+                        >
+                          🔁 Chốt lại 1 kỳ
+                        </button>
+                        <button
+                          onClick={() => handleCloneTicket(t.id, 5)}
+                          disabled={confirming}
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--surface-border)',
+                            background: 'rgba(168,85,247,0.1)',
+                            color: '#a855f7',
+                            cursor: 'pointer',
+                          }}
+                          title="Chốt lại cho 5 kỳ tới"
+                        >
+                          🔁 5 kỳ
+                        </button>
+                        <Link
+                          href={`/ket-qua/${t.id}`}
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--surface-border)',
+                            background: 'rgba(255,255,255,0.04)',
+                            color: 'var(--text-muted)',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          Chi tiết →
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ENSEMBLE STRATEGY RESULTS */}
           {prediction?.strategyResults?.length > 0 && (

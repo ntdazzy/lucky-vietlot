@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { getDb, upsertDraw, countDraws } from '@/lib/db';
+import { checkPendingTicketsForGame } from '@/lib/ticket-checker';
+import { getPrizeTier } from '@/lib/prize-tiers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -257,6 +259,32 @@ export async function GET(request) {
                         ? `\nKết quả: ${data.balls}${data.special_ball ? ` | ĐB: ${data.special_ball}` : ''}`
                         : '';
                     await tgSend(`🎉 <b>Có kết quả ${game.name} mới!</b>\nKỳ #${data.drawId} - ${data.date}${ballsText}`);
+
+                    // Auto-check pending tickets against this new draw
+                    if (game.code !== 'max3dpro') {
+                        try {
+                            const ticketResults = checkPendingTicketsForGame(game.code);
+                            const winners = ticketResults.filter(t => t.prize?.id && t.prize.id !== 'none');
+                            if (winners.length > 0) {
+                                results.winners = (results.winners || []).concat(winners);
+                                // Bot notification per winner
+                                for (const w of winners) {
+                                    const t = getPrizeTier(w.prize.id);
+                                    const banner = w.prize.id === 'jackpot' || w.prize.id === 'jackpot2'
+                                        ? '🎊🎊🎊\n'
+                                        : '';
+                                    await tgSend(
+                                        `${banner}${t.emoji} <b>${t.label}!</b> ${t.amount}\n` +
+                                        `${game.name} #${data.drawId} (${data.date})\n` +
+                                        `Bộ chốt: <code>${w.mainBalls.join(', ')}</code>${w.ticketSpecial ? ` | ĐB: ${w.ticketSpecial}` : ''}\n` +
+                                        `Trúng: <b>${w.matched.join(', ')}</b> (${w.matchCount}/${w.mainBalls.length})${w.specialMatch ? ' + ĐB' : ''}`
+                                    );
+                                }
+                            }
+                        } catch (e) {
+                            console.error(`[update] ticket check failed for ${game.code}:`, e);
+                        }
+                    }
                 }
             }
         } catch (e) {

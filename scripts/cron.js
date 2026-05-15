@@ -1,76 +1,54 @@
+// ============================================================================
+// CRON JOB — Schedules automatic /api/update calls
+// ----------------------------------------------------------------------------
+// This replaces the previous update-today.js which had its own scraping logic
+// (3 games only, no Lotto 5/35, separate DB connection). Now we just hit the
+// Next.js API which:
+//   - handles all 4 games consistently
+//   - uses the shared db.js (auto-migration, dedupe)
+//   - sends Telegram notifications via env vars
+//
+// To run: `node scripts/cron.js` — typically spawned alongside `next start`
+// via the `start` npm script.
+// ============================================================================
+
 const cron = require('node-cron');
-const { updateLatestDraw, sendTelegramNotification } = require('./update-today');
+const axios = require('axios');
 
-console.log("=========================================");
-console.log("🕒 VIETLOTT CRON JOB SCHEDULER STARTED ");
-console.log("🕒 Timezone: Asia/Ho_Chi_Minh");
-console.log("🕒 Schedule: 18:30, 18:45, 19:00 (retry)");
-console.log("🕒 Source: XSKT.com.vn (update-today.js)");
-console.log("=========================================");
+const PORT = process.env.PORT || 3000;
+const API_BASE = process.env.INTERNAL_API_BASE || `http://localhost:${PORT}`;
+const TIMEZONE = 'Asia/Ho_Chi_Minh';
 
-// Lần 1: 18h30 — Mega 6/45, Max 3D (thường có sớm)
-cron.schedule('30 18 * * *', async () => {
-    console.log(`\n⏰ [CRON 18:30] Bắt đầu cào dữ liệu...`);
+console.log('=========================================');
+console.log('VIETLOTT CRON SCHEDULER');
+console.log(`API target: ${API_BASE}`);
+console.log(`Timezone:   ${TIMEZONE}`);
+console.log('Schedule:   18:30, 18:45, 19:00 (Vietnam time)');
+console.log('=========================================');
+
+async function triggerUpdate(label) {
+    const ts = new Date().toLocaleString('vi-VN', { timeZone: TIMEZONE });
+    console.log(`\n[CRON ${label} | ${ts}] Triggering /api/update...`);
     try {
-        const results = await updateLatestDraw();
-        if (results && results.length > 0) {
-            console.log(`✅ [CRON 18:30] Đã cập nhật ${results.length} kỳ mới!`);
-        } else {
-            console.log(`ℹ️ [CRON 18:30] Chưa có kết quả mới.`);
+        const res = await axios.get(`${API_BASE}/api/update`, { timeout: 90000 });
+        const r = res.data?.results;
+        if (r) {
+            console.log(`[CRON ${label}] Updated: ${r.updated.length}, Skipped: ${r.skipped.length}, Failed: ${r.failed.length}`);
+            if (r.updated.length > 0) {
+                console.log('[CRON]  New draws:', r.updated.map(u => `${u.game}#${u.drawId}`).join(', '));
+            }
         }
     } catch (e) {
-        console.error(`❌ [CRON 18:30] Lỗi:`, e);
+        console.error(`[CRON ${label}] Failed:`, e.message);
     }
-}, {
-    scheduled: true,
-    timezone: "Asia/Ho_Chi_Minh"
-});
+}
 
-// Lần 2: 18h45 — Power 6/55 (thường có muộn hơn)
-cron.schedule('45 18 * * *', async () => {
-    console.log(`\n⏰ [CRON 18:45] Retry lấy kết quả...`);
-    try {
-        const results = await updateLatestDraw();
-        if (results && results.length > 0) {
-            console.log(`✅ [CRON 18:45] Đã cập nhật ${results.length} kỳ mới!`);
-        } else {
-            console.log(`ℹ️ [CRON 18:45] Chưa có kết quả mới.`);
-        }
-    } catch (e) {
-        console.error(`❌ [CRON 18:45] Lỗi:`, e);
-    }
-}, {
-    scheduled: true,
-    timezone: "Asia/Ho_Chi_Minh"
-});
+// 18:30 — Mega + Max 3D usually published by now
+cron.schedule('30 18 * * *', () => triggerUpdate('18:30'), { scheduled: true, timezone: TIMEZONE });
+// 18:45 — Power 6/55 typically slightly later
+cron.schedule('45 18 * * *', () => triggerUpdate('18:45'), { scheduled: true, timezone: TIMEZONE });
+// 19:00 — final safety retry
+cron.schedule('0 19 * * *', () => triggerUpdate('19:00'), { scheduled: true, timezone: TIMEZONE });
 
-// Lần 3: 19h00 — Retry cuối cùng
-cron.schedule('0 19 * * *', async () => {
-    console.log(`\n⏰ [CRON 19:00] Retry cuối cùng...`);
-    try {
-        const results = await updateLatestDraw();
-        if (results && results.length > 0) {
-            console.log(`✅ [CRON 19:00] Đã cập nhật ${results.length} kỳ mới!`);
-            await sendTelegramNotification(`📊 <b>Tổng kết hôm nay:</b>\nĐã cập nhật ${results.length} kỳ quay mới vào hệ thống.`);
-        } else {
-            console.log(`ℹ️ [CRON 19:00] Không có kết quả mới hôm nay.`);
-        }
-    } catch (e) {
-        console.error(`❌ [CRON 19:00] Lỗi:`, e);
-    }
-}, {
-    scheduled: true,
-    timezone: "Asia/Ho_Chi_Minh"
-});
-
-// Chạy 1 lần khởi động để check nếu có thiếu dữ liệu lúc deploy
-setTimeout(() => {
-    console.log("🚀 [INIT] Running initial boot update check...");
-    updateLatestDraw().then(results => {
-        if (results && results.length > 0) {
-            console.log(`✅ [INIT] Đã cập nhật ${results.length} kỳ lúc boot.`);
-        } else {
-            console.log(`ℹ️ [INIT] DB đã up-to-date.`);
-        }
-    }).catch(e => console.error("Boot update error:", e));
-}, 5000);
+// Boot-time check — catches any missed draws after a deploy/restart
+setTimeout(() => triggerUpdate('boot'), 12000);

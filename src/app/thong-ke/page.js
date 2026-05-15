@@ -2,6 +2,7 @@ import { getStats, getDecadeDistribution, getSumDistribution, getTrendData, getE
 import { getGameNames } from '@/lib/games';
 import { BarChart2 } from 'lucide-react';
 import DashboardCharts from '@/components/DashboardCharts';
+import GameChip from '@/components/GameChip';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,9 +58,13 @@ export default async function ThongKePage({ searchParams }) {
         </p>
 
         <div className="game-picker mt-lg">
-          {['645', '655', 'max3dpro'].map(g => (
-            <a key={g} href={`/thong-ke?game=${g}`} className={`btn-game${game === g ? ' active' : ''}`}>
-              {gameNames[g]}
+          {['645', '655', '535', 'max3dpro'].map(g => (
+            <a
+              key={g}
+              href={`/thong-ke?game=${g}`}
+              className={`game-pick-link${game === g ? ' is-active' : ''}`}
+            >
+              <GameChip game={g} size="md" variant={game === g ? 'solid' : 'soft'} />
             </a>
           ))}
         </div>

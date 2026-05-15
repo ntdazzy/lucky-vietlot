@@ -19,15 +19,19 @@ const XSKT_HEADERS = {
 };
 
 const GAMES_CONFIG = [
-    // linkPattern = unique substring of href used to find THIS game's date-link.
-    // Without scoping the selector per game, sidebar/cross-links on xskt.com.vn
-    // would pollute all games with the same drawId (e.g., everyone shows 1509,
-    // which is Mega's latest, because pages share a sidebar widget).
-    { code: '645',      name: 'Mega 6/45',  path: 'xsmega645',     type: 'mega',     linkPattern: 'xsmega645/ngay-' },
-    { code: '655',      name: 'Power 6/55', path: 'xspower',       type: 'power',    linkPattern: 'xspower/ngay-' },
-    { code: '535',      name: 'Lotto 5/35', path: 'xslotto-5-35',  type: 'lotto535', linkPattern: 'xslotto-5-35/ngay-' },
-    { code: 'max3dpro', name: 'Max 3D Pro', path: 'xsmax3dpro',    type: 'max3d',    linkPattern: 'xsmax3dpro/ngay-' },
+    // linkPattern = array of href substrings that identify THIS game's date-link.
+    // Multiple patterns needed for Lotto 5/35 which has TWO daily draws
+    // (13h and 21h) on separate URLs but shown together on the date page.
+    { code: '645',      name: 'Mega 6/45',  path: 'xsmega645',    type: 'mega',     linkPatterns: ['xsmega645/ngay-'] },
+    { code: '655',      name: 'Power 6/55', path: 'xspower',      type: 'power',    linkPatterns: ['xspower/ngay-'] },
+    { code: '535',      name: 'Lotto 5/35', path: 'xslotto-5-35', type: 'lotto535', linkPatterns: ['xslotto-13h/ngay-', 'xslotto-21h/ngay-'] },
+    { code: 'max3dpro', name: 'Max 3D Pro', path: 'xsmax3dpro',   type: 'max3d',    linkPatterns: ['xsmax3dpro/ngay-'] },
 ];
+
+// Build a Cheerio attribute selector that matches ANY of the patterns
+function linkSelector(patterns) {
+    return patterns.map(p => `a[href*="${p}"]`).join(', ');
+}
 
 const DATE_DELAY_MS = 150;          // delay between date-fetch batches
 const DATE_CONCURRENCY = 5;         // fetch 5 dates per game in parallel
@@ -120,40 +124,45 @@ class TelegramReporter {
 // ============================================================================
 
 /**
- * Parse one draw row from xskt.com.vn. CRITICAL: must scope link selector
- * to this game's URL pattern, otherwise sidebar/cross-game links pollute
- * the result (caused the "all games show 872/1509" bug).
+ * Parse one draw row from xskt.com.vn. CRITICAL: scope link selector to
+ * THIS game's URL pattern(s), otherwise sidebar/cross-game links pollute
+ * the result.
+ *
+ * For Lotto 5/35, multiple linkPatterns are checked (13h + 21h slots).
  */
 function parseDrawElement($, el, cfg) {
-    const linkSel = `a[href*="${cfg.linkPattern}"]`;
-    const dateLink = $(el).find(linkSel).first();
-    if (!dateLink.length) return null; // No game-specific link in this table → skip
+    const dateLink = $(el).find(linkSelector(cfg.linkPatterns)).first();
+    if (!dateLink.length) return null;
 
-    // drawId: text inside the game-specific date-link (e.g., "#01509" → "01509")
-    const drawIdText = dateLink.text().replace('#', '').trim();
-    if (!drawIdText || !/\d/.test(drawIdText)) return null;
+    // drawId text — extract digits only (e.g., "#00637 (13h)" → "00637")
+    const rawText = dateLink.text().trim();
+    const digitMatch = rawText.match(/\d+/);
+    if (!digitMatch) return null;
+    const drawIdText = digitMatch[0];
 
-    // date: parsed from the href of the same scoped link
+    // date from href
     const href = dateLink.attr('href') || '';
-    const dateMatch = href.match(/ngay-(.+)/);
+    const dateMatch = href.match(/ngay-(\d+-\d+-\d+)/);
     if (!dateMatch) return null;
     const date = dateMatch[1].replace(/-/g, '/');
 
     if (cfg.type === 'mega') {
-        const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
-        if (!balls) return null;
-        return { drawId: drawIdText, date, balls };
+        const ballsArr = $(el).find('.megaresult em').text().trim().split(/\s+/).filter(Boolean);
+        if (ballsArr.length < 6) return null;
+        return { drawId: drawIdText, date, balls: ballsArr.slice(0, 6).join(', ') };
     }
     if (cfg.type === 'power') {
-        const balls = $(el).find('.megaresult').eq(0).find('em').text().trim().split(/\s+/).join(', ');
+        const mainArr = $(el).find('.megaresult').eq(0).find('em').text().trim().split(/\s+/).filter(Boolean);
         const special = $(el).find('.jp2 .megaresult').text().trim();
-        if (!balls) return null;
-        return { drawId: drawIdText, date, balls, special_ball: special };
+        if (mainArr.length < 6) return null;
+        return { drawId: drawIdText, date, balls: mainArr.slice(0, 6).join(', '), special_ball: special };
     }
     if (cfg.type === 'lotto535') {
-        const balls = $(el).find('.megaresult em').text().trim().split(/\s+/).join(', ');
-        if (!balls) return null;
-        return { drawId: drawIdText, date, balls };
+        // Lotto 5/35 = 5 main balls. xskt sometimes shows a 6th value (bonus),
+        // strip it to match game spec.
+        const ballsArr = $(el).find('.megaresult em').text().trim().split(/\s+/).filter(Boolean);
+        if (ballsArr.length < 5) return null;
+        return { drawId: drawIdText, date, balls: ballsArr.slice(0, 5).join(', ') };
     }
     if (cfg.type === 'max3d') {
         const extract = (idx) => $(el).find('tr').eq(idx).find('b').map((j, b) => $(b).text().trim().replace(/\s+/, ', ')).get().join(', ');
@@ -209,7 +218,7 @@ async function syncGame(cfg, reporter, token, gameStates, lineIdx, fullResync) {
         const frontHtml = await fetchPage(`https://xskt.com.vn/${cfg.path}`);
         const $ = cheerio.load(frontHtml);
         const tables = $('table').filter((i, el) =>
-            $(el).find(`a[href*="${cfg.linkPattern}"]`).length > 0
+            $(el).find(linkSelector(cfg.linkPatterns)).length > 0
         );
         tables.each((i, el) => {
             const parsed = parseDrawElement($, el, cfg);
@@ -272,7 +281,7 @@ async function syncGame(cfg, reporter, token, gameStates, lineIdx, fullResync) {
             }
             const $ = cheerio.load(result.value);
             const tables = $('table').filter((j, el) =>
-                $(el).find(`a[href*="${cfg.linkPattern}"]`).length > 0
+                $(el).find(linkSelector(cfg.linkPatterns)).length > 0
             );
             let foundInThisDate = false;
             tables.each((j, el) => {

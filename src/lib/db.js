@@ -209,12 +209,109 @@ function ensureSchema(db) {
             attempts INTEGER,
             created_at TEXT DEFAULT (datetime('now', 'localtime'))
         );
+        -- Single-user "locked in" tickets. User commits to a number set,
+        -- system auto-checks against future real draws and notifies.
+        CREATE TABLE IF NOT EXISTS confirmed_tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            game TEXT NOT NULL,
+            main_balls TEXT NOT NULL,
+            special_ball TEXT,
+            algorithm TEXT,
+            breakdown_json TEXT,
+            note TEXT,
+            confirmed_at TEXT DEFAULT (datetime('now', 'localtime')),
+            checked_against_draw_id TEXT,
+            checked_against_date TEXT,
+            checked_against_balls TEXT,
+            checked_against_special TEXT,
+            checked_at TEXT,
+            match_count INTEGER,
+            matched_balls TEXT,
+            special_match INTEGER DEFAULT 0,
+            prize_tier TEXT,
+            prize_label TEXT,
+            notified INTEGER DEFAULT 0,
+            seen INTEGER DEFAULT 0,
+            expired INTEGER DEFAULT 0,
+            simulated INTEGER DEFAULT 0
+        );
+        -- Migrate older tickets table that may lack these columns
+        -- (ALTER TABLE ADD COLUMN is idempotent-fail in SQLite, so we ignore errors)
+    `);
+    // Best-effort schema migrations for older DBs
+    for (const col of ['checked_against_balls TEXT', 'checked_against_special TEXT', 'simulated INTEGER DEFAULT 0']) {
+        try { db.exec(`ALTER TABLE confirmed_tickets ADD COLUMN ${col}`); } catch (e) { /* column exists */ }
+    }
+    db.exec(`
         CREATE INDEX IF NOT EXISTS idx_645_draw_id ON draws_645(draw_id);
         CREATE INDEX IF NOT EXISTS idx_655_draw_id ON draws_655(draw_id);
         CREATE INDEX IF NOT EXISTS idx_535_draw_id ON draws_535(draw_id);
         CREATE INDEX IF NOT EXISTS idx_max3dpro_draw_id ON draws_max3dpro(draw_id);
         CREATE INDEX IF NOT EXISTS idx_history_game ON prediction_history(game, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_tickets_game_pending ON confirmed_tickets(game, checked_against_draw_id);
+        CREATE INDEX IF NOT EXISTS idx_tickets_notify ON confirmed_tickets(notified, prize_tier);
+
+        -- Each ticket can be "locked for" multiple future draws.
+        -- ticket_checks records ONE check result per draw faced.
+        CREATE TABLE IF NOT EXISTS ticket_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id INTEGER NOT NULL,
+            draw_id TEXT,
+            draw_date TEXT,
+            draw_balls TEXT,
+            draw_special TEXT,
+            match_count INTEGER,
+            matched_balls TEXT,
+            special_match INTEGER DEFAULT 0,
+            prize_tier TEXT,
+            prize_label TEXT,
+            seen INTEGER DEFAULT 0,
+            simulated INTEGER DEFAULT 0,
+            checked_at TEXT DEFAULT (datetime('now', 'localtime'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_checks_ticket ON ticket_checks(ticket_id, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_checks_unseen ON ticket_checks(seen, prize_tier);
     `);
+
+    // Multi-draw lock support: each ticket can target N upcoming draws
+    for (const col of ['lock_for_draws INTEGER DEFAULT 1', 'draws_checked INTEGER DEFAULT 0', 'parent_ticket_id INTEGER']) {
+        try { db.exec(`ALTER TABLE confirmed_tickets ADD COLUMN ${col}`); } catch (e) { /* exists */ }
+    }
+
+    // One-time migration: move legacy check data into ticket_checks
+    try {
+        const hasOldData = db.prepare(`
+            SELECT COUNT(*) AS n FROM confirmed_tickets
+            WHERE checked_against_draw_id IS NOT NULL
+              AND id NOT IN (SELECT ticket_id FROM ticket_checks)
+        `).get();
+        if (hasOldData?.n > 0) {
+            db.exec(`
+                INSERT INTO ticket_checks
+                  (ticket_id, draw_id, draw_date, draw_balls, draw_special,
+                   match_count, matched_balls, special_match,
+                   prize_tier, prize_label, seen, simulated, checked_at)
+                SELECT id,
+                       checked_against_draw_id, checked_against_date,
+                       COALESCE(checked_against_balls, ''),
+                       checked_against_special,
+                       match_count, matched_balls, COALESCE(special_match, 0),
+                       prize_tier, prize_label, COALESCE(seen, 0),
+                       COALESCE(simulated, 0),
+                       COALESCE(checked_at, confirmed_at)
+                FROM confirmed_tickets
+                WHERE checked_against_draw_id IS NOT NULL
+                  AND id NOT IN (SELECT ticket_id FROM ticket_checks);
+
+                UPDATE confirmed_tickets
+                SET draws_checked = 1
+                WHERE checked_against_draw_id IS NOT NULL AND draws_checked = 0;
+            `);
+            console.log(`[db] Migrated ${hasOldData.n} legacy ticket-check(s) into ticket_checks`);
+        }
+    } catch (e) {
+        console.warn('[db] ticket_checks migration warning:', e.message);
+    }
 }
 
 function openConnection() {

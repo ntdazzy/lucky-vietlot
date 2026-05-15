@@ -1,6 +1,7 @@
 import { getDb, findDuplicateSets, searchExactSet } from '@/lib/db';
 import { getGameNames } from '@/lib/games';
 import { Search, Copy, Filter, Hash, ArrowRight } from 'lucide-react';
+import GameChip from '@/components/GameChip';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,9 +80,14 @@ export default async function SearchPage({ searchParams }) {
 
         <div className="game-picker">
           {['645', '655', '535', 'max3dpro'].map(g => (
-            <a key={g} href={`/search?game=${g}&mode=${mode}&q=${query}`} className={`btn-game${game === g ? ' active' : ''}`}>
-              {gameNames[g]}
-              <span style={{ fontSize: '0.7rem', opacity: 0.8, marginLeft: '5px', display: 'block' }}>({counts[g]} kỳ)</span>
+            <a
+              key={g}
+              href={`/tra-cuu?game=${g}&mode=${mode}&q=${query}`}
+              className={`game-pick-link${game === g ? ' is-active' : ''}`}
+              style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
+            >
+              <GameChip game={g} size="md" variant={game === g ? 'solid' : 'soft'} />
+              <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>{counts[g]} kỳ</span>
             </a>
           ))}
         </div>
@@ -94,7 +100,7 @@ export default async function SearchPage({ searchParams }) {
           { key: 'exact', icon: '🎯', label: 'Dò Số Lịch Sử' },
           { key: 'duplicates', icon: '♻️', label: 'Xem Số Trùng' }
         ].map(tab => (
-          <a key={tab.key} href={`/search?game=${game}&mode=${tab.key}&q=${query}&min=${minOcc}`}
+          <a key={tab.key} href={`/tra-cuu?game=${game}&mode=${tab.key}&q=${query}&min=${minOcc}`}
             style={{
               padding: '10px 20px', borderRadius: '10px', textDecoration: 'none',
               background: mode === tab.key ? 'var(--surface-hover)' : 'var(--surface)',

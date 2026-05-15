@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import ThemeWrapper from '@/components/ThemeWrapper';
 import Navbar from '@/components/Navbar';
 import PWAProvider from '@/components/PWAProvider';
+import NotificationListener from '@/components/NotificationListener';
 
 const inter = Inter({ subsets: ['latin', 'vietnamese'], display: 'swap' });
 
@@ -42,6 +43,7 @@ export default function RootLayout({ children }) {
           <main className="container main-content">
             {children}
           </main>
+          <NotificationListener />
           <PWAProvider />
         </ThemeWrapper>
       </body>
